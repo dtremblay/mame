@@ -86,7 +86,7 @@ void f256_state::f256k(machine_config &config)
     m_via6522_0->irq_handler().set(FUNC(f256_state::via0_interrupt));
 
     // initialize the PS2 mouse
-    HLE_PS2_MOUSE(config, m_mouse);
+    //HLE_PS2_MOUSE(config, m_mouse, MASTER_CLOCK/4);
 
     MOS6522(config, m_via6522_1, MASTER_CLOCK / 4);  // Keyboard XTAL(14'318'181)/14)
     m_via6522_1->readpa_handler().set(FUNC(f256_state::via1_system_porta_r));
@@ -417,7 +417,7 @@ u8   f256_state::mem_r(offs_t offset)
                             case 0xD6A5:
                                 if (m_rng_enabled)
                                 {
-                                    return (get_random() >> 8) & 0xFF;
+                                    return get_random() & 0xFF;
                                 }
                                 else
                                 {
@@ -1057,7 +1057,7 @@ void f256_state::unsignedAdder(int baseAddr)
 //-------------------------------------------------
 uint8_t f256_state::get_random()
 {
-    int m_random = rand();
+    uint8_t m_random = rand();
     return m_random & 0xFF;
 }
 //-------------------------------------------------
@@ -1164,8 +1164,6 @@ void f256_state::device_start()
 
     m_timer0 = timer_alloc(FUNC(f256_state::timer0), this);
     m_timer1 = timer_alloc(FUNC(f256_state::timer1), this);
-
-    m_mouse->start();
 }
 
 //-------------------------------------------------
@@ -1188,7 +1186,7 @@ void f256_state::device_reset()
     m_in_bit = 0;
 	m_spi_clock_state = false;
     spi_sd_enabled = 0;
-    m_mouse->reset();
+    // m_mouse->reset();
 }
 
 //-------------------------------------------------
