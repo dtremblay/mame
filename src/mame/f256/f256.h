@@ -102,7 +102,7 @@ private:
 	// VIA1 - Internal Keyboard
 	uint8_t m_via_keyboard_port_a = 0xFF;
 	uint8_t m_via_keyboard_port_b = 0xFF;
-	u_int8_t m_via_joy1 = 0xFF;
+	uint8_t m_via_joy1 = 0xFF;
 
 	u8 via1_system_porta_r();
 	u8 via1_system_portb_r();

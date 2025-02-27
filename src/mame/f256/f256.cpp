@@ -68,6 +68,7 @@ void f256_state::f256k(machine_config &config)
 
     m_screen->set_refresh_hz(60); // Refresh rate (e.g., 60Hz)
     m_screen->set_size(800,525);
+    //m_screen->set_visarea(160, 799, 45, 524);  // this is how it should reall work, but the screen ends up offset
     m_screen->set_visarea(0, 639, 0, 479);
     m_screen->set_screen_update(m_video, FUNC(tiny_vicky_video_device::screen_update));
     TINY_VICKY(config, m_video, MASTER_CLOCK);

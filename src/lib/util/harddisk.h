@@ -34,6 +34,8 @@ public:
 
 	hard_disk_file(chd_file *chd);
 	hard_disk_file(util::random_read_write &corefile, uint32_t skipoffs);
+	hard_disk_file(util::random_read_write &corefile, uint8_t head, uint8_t sector, uint16_t cylinder, uint8_t head_end, uint8_t  sector_head, uint16_t cylinder_end, u_int32_t skipoffs);
+
 
 	~hard_disk_file();
 
@@ -49,10 +51,11 @@ public:
 	std::error_condition get_disk_key_data(std::vector<uint8_t> &data) const;
 
 private:
-	chd_file *                  chd;        // CHD file
-	util::random_read_write *   fhandle;    // file if not a CHD
-	info                        hdinfo;     // hard disk info
-	uint32_t                    fileoffset; // offset in the file where the HDD image starts.  not valid for CHDs.
+	chd_file *                  chd;            // CHD file
+	util::random_read_write *   fhandle;        // file if not a CHD
+	info                        hdinfo;         // hard disk info
+	uint32_t                    fileoffset;     // offset in the file where the HDD image starts.  not valid for CHDs.
+	bool                        is_mbr = false; // if the disk image contains a Master Boot Record
 };
 
 #endif // MAME_LIB_UTIL_HARDDISK_H

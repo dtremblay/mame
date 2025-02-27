@@ -223,6 +223,7 @@ std::error_condition spi_sdcard_device::image_loaded(device_image_interface &ima
 		++total_exp;
 	}
 	bool const sd_ok = (2 <= total_exp) && ((1 << 12) >= (total_mant << ((9 < total_exp) ? (total_exp - 9) : 0)));
+	//bool const sdhc_ok = (512 == info.sectorbytes) && (((10 <= total_exp) && (u32(1) << 16) >= (total_mant << (total_exp - 10))) || (total_mant % 2 == 1));
 	bool const sdhc_ok = (512 == info.sectorbytes) && (10 <= total_exp) && ((u32(1) << 16) >= (total_mant << (total_exp - 10)));
 	if (!sd_ok && !sdhc_ok)
 	{

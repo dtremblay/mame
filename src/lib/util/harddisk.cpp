@@ -80,6 +80,23 @@ hard_disk_file::hard_disk_file(util::random_read_write &corefile, uint32_t skipo
 			}
 }
 
+hard_disk_file::hard_disk_file(util::random_read_write &corefile, uint8_t head, uint8_t sector, uint16_t cylinder,
+	uint8_t head_end, uint8_t  sector_end, uint16_t cylinder_end,  uint32_t skipoffs)
+{
+	std::uint64_t length;
+	if (corefile.length(length))
+		throw nullptr;
+
+	chd = nullptr;
+	fhandle = &corefile;
+	hdinfo.sectorbytes = 512;
+	hdinfo.cylinders = cylinder_end - cylinder + 1;
+	hdinfo.heads = head_end - head + 1;
+	hdinfo.sectors = sector_end - sector + 1;
+	fileoffset = skipoffs;
+	is_mbr = true;
+	osd_printf_verbose("Read CHS of %d/%d/%d from MBR\n", hdinfo.cylinders, hdinfo.heads, hdinfo.sectors);
+}
 
 /*-------------------------------------------------
     destructor - close a hard disk handle
@@ -120,6 +137,19 @@ bool hard_disk_file::read(uint32_t lbasector, void *buffer)
 		std::error_condition err = fhandle->seek(fileoffset + (lbasector * hdinfo.sectorbytes), SEEK_SET);
 		if (!err)
 			std::tie(err, actual) = util::read(*fhandle, buffer, hdinfo.sectorbytes);
+		//osd_printf_verbose("Reading Sector: %06X\n", lbasector);
+
+		// Print the sector data - for debugging
+		// for (int i=0;i<16;i++)
+		// {
+		// 	for (int j=0;j<32;j++)
+		// 	{
+		// 		uint8_t *buff = (uint8_t *)buffer;
+		// 		uint8_t val = buff[i*32 + j]; // read first byte
+		// 		osd_printf_verbose("%02X ", val);
+		// 	}
+		// 	osd_printf_verbose("\n");
+		// }
 		return !err && (actual == hdinfo.sectorbytes);
 	}
 }

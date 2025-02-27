@@ -86,7 +86,7 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
                 border_x = iopage0_ptr[0x1008];
                 border_y = iopage0_ptr[0x1009];
             }
-
+            uint32_t *topleft = (uint32_t *)bitmap.raw_pixptr(0);
             for (uint16_t y = 0; y < lines; y++)
             {
                 m_line = y;
@@ -94,6 +94,7 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
                 uint8_t sol_reg = iopage0_ptr[0x1018];
                 // 12-bit line
                 uint16_t sol_line = iopage0_ptr[0x1018] + ((iopage0_ptr[0x101A] & 0xF) << 8);
+                uint32_t *row = topleft + y * 800;
                 if ((sol_reg & 1) != 0 && y == sol_line)
                 {
                     // raise an interrupt
@@ -118,7 +119,7 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
                 {
                     for (int x = 0; x < 640; x++)
                     {
-                        bitmap.pix(y, x) = border_color;
+                        row[x] = border_color;
                     }
                 }
                 else
@@ -140,7 +141,7 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
                     // draw the border or background
                     for (int x = 0; x < 640; x++)
                     {
-                        bitmap.pix(y, x) = x < border_x || x >= 640 - border_x ? border_color : background_color;
+                        row[x] = x < border_x || x >= 640 - border_x ? border_color : background_color;
                     }
 
                     if (enable_graphics)
@@ -153,50 +154,50 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
                         // draw layers starting from the back
                         if ((mcr & 0x20) != 0)
                         {
-                            draw_sprites(bitmap, enable_gamma, 3, display_border, border_x, border_y, y, (uint16_t)640, lines / 2);
+                            draw_sprites(row, enable_gamma, 3, display_border, border_x, border_y, y, (uint16_t)640, lines / 2);
                         }
                         if ((mcr & 0x8) != 0 && LayerMgr2 < 3)
                         {
-                            draw_bitmap(bitmap, enable_gamma, LayerMgr2, display_border, background_color, border_x, border_y, y, (uint16_t)640);
+                            draw_bitmap(row, enable_gamma, LayerMgr2, display_border, background_color, border_x, border_y, y, (uint16_t)640);
 
                         }
                         if ((mcr & 0x10) != 0 && (LayerMgr2 > 3 && LayerMgr2 < 7))
                         {
-                            draw_tiles(bitmap, enable_gamma, LayerMgr2 & 3, display_border, border_x, y, (uint16_t)640);
+                            draw_tiles(row, enable_gamma, LayerMgr2 & 3, display_border, border_x, y, (uint16_t)640);
                         }
                         if ((mcr & 0x20) != 0)
                         {
-                            draw_sprites(bitmap, enable_gamma, 2, display_border, border_x, border_y, y, (uint16_t)640, lines/2);
+                            draw_sprites(row, enable_gamma, 2, display_border, border_x, border_y, y, (uint16_t)640, lines/2);
                         }
                         if ((mcr & 0x8) != 0 && LayerMgr1 < 3)
                         {
-                            draw_bitmap(bitmap, enable_gamma, LayerMgr1, display_border, background_color, border_x, border_y, y, (uint16_t)640);
+                            draw_bitmap(row, enable_gamma, LayerMgr1, display_border, background_color, border_x, border_y, y, (uint16_t)640);
                         }
                         if ((mcr & 0x10) != 0 && (LayerMgr1 > 3 && LayerMgr1 < 7))
                         {
-                            draw_tiles(bitmap, enable_gamma, LayerMgr1 & 3, display_border, border_x, y, (uint16_t)640);
+                            draw_tiles(row, enable_gamma, LayerMgr1 & 3, display_border, border_x, y, (uint16_t)640);
                         }
                         if ((mcr & 0x20) != 0)
                         {
-                            draw_sprites(bitmap, enable_gamma, 1, display_border, border_x, border_y, y, (uint16_t)640, lines / 2);
+                            draw_sprites(row, enable_gamma, 1, display_border, border_x, border_y, y, (uint16_t)640, lines / 2);
                         }
                         if ((mcr & 0x8) != 0 && LayerMgr0 < 3)
                         {
-                            draw_bitmap(bitmap, enable_gamma, LayerMgr0, display_border, background_color, border_x, border_y, y, (uint16_t)640);
+                            draw_bitmap(row, enable_gamma, LayerMgr0, display_border, background_color, border_x, border_y, y, (uint16_t)640);
                         }
                         if ((mcr & 0x10) != 0 && (LayerMgr0 > 3 && LayerMgr0 < 7))
                         {
-                            draw_tiles(bitmap, enable_gamma, LayerMgr0 & 3, display_border, border_x, y, (uint16_t)640);
+                            draw_tiles(row, enable_gamma, LayerMgr0 & 3, display_border, border_x, y, (uint16_t)640);
                         }
                         if ((mcr & 0x20) != 0)
                         {
-                            draw_sprites(bitmap, enable_gamma, 0, display_border, border_x, border_y, y, (uint16_t)640, lines/ 2);
+                            draw_sprites(row, enable_gamma, 0, display_border, border_x, border_y, y, (uint16_t)640, lines/ 2);
                         }
                     }
                     // Only display text in these cases
                     if ((mcr & 0x7) == 1 || (mcr & 0x7) == 3 || (mcr & 0x7) == 7)
                     {
-                        draw_text(bitmap, mcr, enable_gamma, border_x, border_y, y, (uint16_t)640, (uint16_t)lines);
+                        draw_text(row, mcr, enable_gamma, border_x, border_y, y, (uint16_t)640, (uint16_t)lines);
                     }
                 }
             }
@@ -207,7 +208,7 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
 }
 
 
-void tiny_vicky_video_device::draw_text(bitmap_rgb32 &bitmap, uint8_t mcr, bool enable_gamma, uint8_t brd_x, uint8_t brd_y, uint16_t line, uint16_t x_res, uint16_t y_res)
+void tiny_vicky_video_device::draw_text(uint32_t *row, uint8_t mcr, bool enable_gamma, uint8_t brd_x, uint8_t brd_y, uint16_t line, uint16_t x_res, uint16_t y_res)
 {
     bool overlay = (mcr & 0x2) != 0;
     uint8_t mcrh = iopage0_ptr[0x1001] & 0x3F;
@@ -286,13 +287,13 @@ void tiny_vicky_video_device::draw_text(bitmap_rgb32 &bitmap, uint8_t mcr, bool 
             {
                 if ((value & b) != 0)
                 {
-                    bitmap.pix(line, screen_x) = fg_color;
-                    bitmap.pix(line, screen_x+1) = fg_color;
+                    row[screen_x] = fg_color;
+                    row[screen_x + 1] = fg_color;
                 }
                 else if (!overlay || (overlay_font && (bg_color == 0)))
                 {
-                    bitmap.pix(line, screen_x) = bg_color;
-                    bitmap.pix(line, screen_x+1) = bg_color;
+                    row[screen_x] = bg_color;
+                    row[screen_x + 1] = bg_color;
                 }
                 screen_x += 2;
             }
@@ -300,11 +301,11 @@ void tiny_vicky_video_device::draw_text(bitmap_rgb32 &bitmap, uint8_t mcr, bool 
             {
                 if ((value & b) != 0)
                 {
-                    bitmap.pix(line, screen_x) = fg_color;
+                    row[screen_x] = fg_color;
                 }
                 else if (!overlay || (overlay_font && (bg_color != 0)))
                 {
-                    bitmap.pix(line, screen_x) = bg_color;
+                    row[screen_x] = bg_color;
                 }
                 screen_x++;
             }
@@ -318,7 +319,7 @@ void tiny_vicky_video_device::device_reset()
 {
 
 }
-void tiny_vicky_video_device::draw_bitmap(bitmap_rgb32 &bitmap, bool enable_gamma, uint8_t layer, bool bkgrnd, rgb_t bgndColor, uint8_t borderXSize, uint8_t borderYSize, uint16_t line, uint16_t width)
+void tiny_vicky_video_device::draw_bitmap(uint32_t *row, bool enable_gamma, uint8_t layer, bool bkgrnd, rgb_t bgndColor, uint8_t borderXSize, uint8_t borderYSize, uint16_t line, uint16_t width)
 {
     uint8_t reg = iopage0_ptr[(0xD100 - 0xC000) + layer * 8];
     // check if the bitmap is enabled
@@ -327,10 +328,10 @@ void tiny_vicky_video_device::draw_bitmap(bitmap_rgb32 &bitmap, bool enable_gamm
         return;
     }
     uint8_t lut_index = (reg >> 1) & 7;  // 8 possible LUTs
-
-    int bitmapAddress = (iopage0_ptr[(0xD101 - 0xC000) + layer * 8] +
-                         (iopage0_ptr[(0xD102 - 0xC000) + layer * 8] << 8) +
-                         (iopage0_ptr[(0xD103 - 0xC000) + layer * 8] << 16)
+    constexpr int base_offset = 0xD101 - 0xC000;
+    int bitmapAddress = (iopage0_ptr[base_offset + layer * 8] +
+                         (iopage0_ptr[base_offset + 1 + layer * 8] << 8) +
+                         (iopage0_ptr[base_offset + 2 + layer * 8] << 16)
                         ) & 0x3F'FFFF;
 
     rgb_t color_val = 0;
@@ -343,14 +344,14 @@ void tiny_vicky_video_device::draw_bitmap(bitmap_rgb32 &bitmap, bool enable_gamm
         if (pix_val != 0)
         {
             color_val = get_lut_value(lut_index, pix_val, enable_gamma);
-            bitmap.pix(line, col) = color_val;
-            bitmap.pix(line, col + 1) = color_val;
+            row[col] = color_val;
+            row[col + 1] = color_val;
         }
     }
 }
 
 
-void tiny_vicky_video_device::draw_sprites(bitmap_rgb32 &bitmap, bool enable_gamma, uint8_t layer, bool bkgrnd, uint8_t borderXSize, uint8_t borderYSize, uint16_t line, uint16_t width, uint16_t height)
+void tiny_vicky_video_device::draw_sprites(uint32_t *row, bool enable_gamma, uint8_t layer, bool bkgrnd, uint8_t borderXSize, uint8_t borderYSize, uint16_t line, uint16_t width, uint16_t height)
 {
     // There are 64 possible sprites to choose from.
     for (int s = 63; s > -1; s--)
@@ -435,8 +436,8 @@ void tiny_vicky_video_device::draw_sprites(bitmap_rgb32 &bitmap, bool enable_gam
                     if (pixVal != 0)
                     {
                         clrVal = get_lut_value(lut_index, pixVal, enable_gamma);
-                        bitmap.pix(line, (col * 2) - xOffset + posX) = clrVal;
-                        bitmap.pix(line, (col * 2) + 1 - xOffset + posX) = clrVal;
+                        row[(col * 2) - xOffset + posX] = clrVal;
+                        row[(col * 2) + 1 - xOffset + posX] = clrVal;
                     }
                 }
             }
@@ -444,7 +445,7 @@ void tiny_vicky_video_device::draw_sprites(bitmap_rgb32 &bitmap, bool enable_gam
     }
 }
 
-void tiny_vicky_video_device::draw_tiles(bitmap_rgb32 &bitmap, bool enable_gamma, uint8_t layer, bool bkgrnd, uint8_t borderXSize, uint16_t line, uint16_t width)
+void tiny_vicky_video_device::draw_tiles(uint32_t *row, bool enable_gamma, uint8_t layer, bool bkgrnd, uint8_t borderXSize, uint16_t line, uint16_t width)
 {
     // There are four possible tilemaps to choose from
     int addr_tile_addr = 0xD200 - 0xC000 + layer * 12;
@@ -548,8 +549,8 @@ void tiny_vicky_video_device::draw_tiles(bitmap_rgb32 &bitmap, bool enable_gamma
             if (pixVal > 0)
             {
                 clr_val = get_lut_value(lut_index, pixVal, enable_gamma);
-                bitmap.pix(line, x) = clr_val;
-                bitmap.pix(line, x + 1) = clr_val;
+                row[x] = clr_val;
+                row[x+1] = clr_val;
             }
             startOffset++;
             //tilesetOffsetAddress++;
@@ -563,7 +564,7 @@ void tiny_vicky_video_device::draw_tiles(bitmap_rgb32 &bitmap, bool enable_gamma
     }
 }
 
-void tiny_vicky_video_device::draw_mouse(bitmap_rgb32 &bitmap, bool enable_gamma, uint16_t line, uint16_t width, uint16_t height)
+void tiny_vicky_video_device::draw_mouse(uint32_t *row, bool enable_gamma, uint16_t line, uint16_t width, uint16_t height)
 {
     uint8_t mouse_reg = iopage0_ptr[0xD6E0 -0xC000];
 
@@ -599,7 +600,7 @@ void tiny_vicky_video_device::draw_mouse(bitmap_rgb32 &bitmap, bool enable_gamma
                                     iopage0_ptr[0x400 + pixel_index],
                                     iopage0_ptr[pixel_index]);
                     }
-                    bitmap.pix(col + PosX, mline) = value;
+                    row[col + PosX] = value;
                 }
             }
         }

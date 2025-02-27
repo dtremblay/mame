@@ -240,7 +240,7 @@ std::error_condition harddisk_image_device::internal_load_hd()
 
 	std::error_condition err;
 	m_chd = nullptr;
-	uint8_t header[64];
+	uint8_t header[0x200];
 
 	m_hard_disk_handle.reset();
 
@@ -252,7 +252,7 @@ std::error_condition harddisk_image_device::internal_load_hd()
 	else
 	{
 		fseek(0, SEEK_SET);
-		fread(header, 64);
+		fread(header, 0x200);  // read 512 bytes
 		fseek(0, SEEK_SET);
 
 		if (!memcmp("MComprHD", header, 8))
@@ -305,6 +305,13 @@ std::error_condition harddisk_image_device::internal_load_hd()
 	else
 	{
 		uint32_t skip = 0;
+		bool is_mbr = false;
+		uint8_t hd_start = 0;
+		uint8_t sct_start = 0;
+		uint16_t cyl_start = 0;
+		uint8_t hd_end  = 0;
+		uint8_t sct_end = 0;
+		uint16_t cyl_end = 0;
 
 		if (!memcmp(header, "2IMG", 4)) // check for 2MG format
 		{
@@ -324,10 +331,25 @@ std::error_condition harddisk_image_device::internal_load_hd()
 				skip = 0;
 			}
 		}
+		else if (header[510] == 0x55 && header[511] == 0xAA)
+		{
+			is_mbr = true;
+			// this is a Master Boot Record disk - therefore, there is a partition table at 0x1BE
+			hd_start  = header[0x1BE + 1];
+			sct_start = header[0x1BE + 2] & 0x3F;
+			cyl_start = ((header[0x1BE + 2] & 0xC0) << 2) + header[0x1BE + 3];
+			hd_end  = header[0x1BE + 5];
+			sct_end = header[0x1BE + 6] & 0x3F;
+			cyl_end = ((header[0x1BE + 6] & 0xC0) << 2) + header[0x1BE + 7];
+			skip = (header[0x1BE + 8] + (header[0x1BE + 9] << 8) + (header[0x1BE + 10] << 16) + (header[0x1BE + 11] << 24)) * 512;
+		}
 
 		try
 		{
-			m_hard_disk_handle.reset(new hard_disk_file(image_core_file(), skip));
+			if (!is_mbr)
+				m_hard_disk_handle.reset(new hard_disk_file(image_core_file(), skip));
+			else
+				m_hard_disk_handle.reset(new hard_disk_file(image_core_file(), hd_start, sct_start, cyl_start, hd_end, sct_end, cyl_end, 0));
 			if (m_hard_disk_handle)
 				return std::error_condition();
 		}
@@ -355,6 +377,7 @@ const hard_disk_file::info &harddisk_image_device::get_info() const
 
 bool harddisk_image_device::read(uint32_t lbasector, void *buffer)
 {
+	logerror("Disk Read: %X\n", lbasector);
 	return m_hard_disk_handle->read(lbasector, buffer);
 }
 
@@ -383,4 +406,3 @@ std::error_condition harddisk_image_device::get_disk_key_data(std::vector<uint8_
 {
 	return m_hard_disk_handle->get_disk_key_data(data);
 }
-
