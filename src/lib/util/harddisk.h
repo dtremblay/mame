@@ -34,7 +34,7 @@ public:
 
 	hard_disk_file(chd_file *chd);
 	hard_disk_file(util::random_read_write &corefile, uint32_t skipoffs);
-	hard_disk_file(util::random_read_write &corefile, uint8_t head, uint8_t sector, uint16_t cylinder, uint8_t head_end, uint8_t  sector_head, uint16_t cylinder_end, u_int32_t skipoffs);
+	hard_disk_file(util::random_read_write &corefile, uint8_t head, uint8_t sector, uint16_t cylinder, uint8_t head_end, uint8_t  sector_head, uint16_t cylinder_end, uint32_t skipoffs);
 
 
 	~hard_disk_file();
