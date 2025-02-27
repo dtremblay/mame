@@ -14,6 +14,7 @@
 #include "tiny_vicky.h"
 #include "speaker.h"
 #include "machine/spi_sdcard.h"
+#include "bus/pc_kbd/hle_mouse.h"
 
 #define MASTER_CLOCK        (XTAL(25'175'000))
 #define MUSIC_CLOCK         (XTAL(14'318'181))
@@ -56,6 +57,7 @@ private:
 	required_device<mos6581_device> m_sid0, m_sid1;
 
 	required_device<tiny_vicky_video_device> m_video;
+	optional_device<hle_ps2_mouse_device> m_mouse;
 
 	// SD Card stuff
 	TIMER_CALLBACK_MEMBER(spi_clock);

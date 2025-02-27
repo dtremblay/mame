@@ -46,6 +46,7 @@ f256_state::f256_state(const machine_config &mconfig, device_type type, const ch
     , m_sid1(*this, "sid_1")
 
     , m_video(*this, "tiny_vicky")
+    , m_mouse(*this, "mouse")
     , m_sdcard(*this, "sdcard")
 	, m_spi_clock_state(false)
 	, m_spi_clock_sysclk(false)
@@ -84,8 +85,8 @@ void f256_state::f256k(machine_config &config)
     m_via6522_0->cb2_handler().set(FUNC(f256_state::via0_cb2_write));
     m_via6522_0->irq_handler().set(FUNC(f256_state::via0_interrupt));
 
-    // to handle interrupts before the CPU, look into "input_merger_device"
-	//
+    // initialize the PS2 mouse
+    HLE_PS2_MOUSE(config, m_mouse);
 
     MOS6522(config, m_via6522_1, MASTER_CLOCK / 4);  // Keyboard XTAL(14'318'181)/14)
     m_via6522_1->readpa_handler().set(FUNC(f256_state::via1_system_porta_r));
@@ -1163,6 +1164,8 @@ void f256_state::device_start()
 
     m_timer0 = timer_alloc(FUNC(f256_state::timer0), this);
     m_timer1 = timer_alloc(FUNC(f256_state::timer1), this);
+
+    m_mouse->start();
 }
 
 //-------------------------------------------------
@@ -1185,6 +1188,7 @@ void f256_state::device_reset()
     m_in_bit = 0;
 	m_spi_clock_state = false;
     spi_sd_enabled = 0;
+    m_mouse->reset();
 }
 
 //-------------------------------------------------
@@ -1442,7 +1446,18 @@ void f256_state::via0_cb2_write(u8 value)
     m_via6522_0->write_cb2(value);
 }
 
-// TODO: check the ports
+static INPUT_PORTS_START(f256k_mouse)
+    PORT_START("MOUSE_X")
+    PORT_BIT(0xff, 0, IPT_MOUSE_X) PORT_SENSITIVITY(50) PORT_KEYDELTA(10)
+
+    PORT_START("MOUSE_Y")
+    PORT_BIT(0xff, 0, IPT_MOUSE_Y) PORT_SENSITIVITY(50) PORT_KEYDELTA(10)
+
+    PORT_START("MOUSE_BUTTONS")
+    PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_BUTTON1) PORT_NAME("Left Button")
+    PORT_BIT(0x02, IP_ACTIVE_HIGH, IPT_BUTTON2) PORT_NAME("Right Button")
+INPUT_PORTS_END
+
 static INPUT_PORTS_START(f256k_joysticks)
     PORT_START("JOY1") /* Atari Joystick 1 */
 	PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_JOYSTICK_UP)    PORT_8WAY PORT_PLAYER(1) PORT_NAME("Atari Joystick P1 Up")
@@ -1523,6 +1538,7 @@ void f256_state::via1_cb2_write(u8 value)
 
 static INPUT_PORTS_START(f256k)
     PORT_INCLUDE( f256k_joysticks )
+    PORT_INCLUDE( f256k_mouse )
 
 	PORT_START("ROW0")
     PORT_BIT(0x01, IP_ACTIVE_LOW, IPT_KEYBOARD) PORT_NAME("DEL")     PORT_CODE(KEYCODE_DEL)
