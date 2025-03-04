@@ -46,7 +46,9 @@ f256_state::f256_state(const machine_config &mconfig, device_type type, const ch
     , m_sid1(*this, "sid_1")
 
     , m_video(*this, "tiny_vicky")
-    , m_mouse(*this, "mouse")
+    , m_iec(*this, "iec")
+    , m_ps2_keyboard(*this, "ps2_kbd")
+    , m_mouse(*this, "ps_mouse")
     , m_sdcard(*this, "sdcard")
 	, m_spi_clock_state(false)
 	, m_spi_clock_sysclk(false)
@@ -86,7 +88,8 @@ void f256_state::f256k(machine_config &config)
     m_via6522_0->irq_handler().set(FUNC(f256_state::via0_interrupt));
 
     // initialize the PS2 mouse
-    //HLE_PS2_MOUSE(config, m_mouse, MASTER_CLOCK/4);
+    PC_KBDC(config, m_ps2_keyboard, XTAL(32'768));
+    HLE_PS2_MOUSE(config, m_mouse, XTAL(32'768));
 
     MOS6522(config, m_via6522_1, MASTER_CLOCK / 4);  // Keyboard XTAL(14'318'181)/14)
     m_via6522_1->readpa_handler().set(FUNC(f256_state::via1_system_porta_r));
@@ -105,16 +108,21 @@ void f256_state::f256k(machine_config &config)
 
     SPEAKER(config, "lspeaker").front_left();
     SPEAKER(config, "rspeaker").front_right();
-    m_sn0->add_route(ALL_OUTPUTS, "lspeaker", 1.00);
-    m_sn1->add_route(ALL_OUTPUTS, "rspeaker", 1.00);
+    // Mix PSG
+    m_sn0->add_route(ALL_OUTPUTS, "lspeaker", 0.5);
+    m_sn0->add_route(ALL_OUTPUTS, "rspeaker", 0.5);
+    m_sn1->add_route(ALL_OUTPUTS, "lspeaker", 0.5);
+    m_sn1->add_route(ALL_OUTPUTS, "rspeaker", 0.5);
+
     m_opl3->add_route(0, "lspeaker", 1.0);
 	m_opl3->add_route(1, "rspeaker", 1.0);
 	m_opl3->add_route(2, "lspeaker", 1.0);
 	m_opl3->add_route(3, "rspeaker", 1.0);
-    // The SIDs are very noisy - so they are commented out for now.
-    // m_sid0->add_route(ALL_OUTPUTS, "lspeaker", 1.00);
-    // m_sid1->add_route(ALL_OUTPUTS, "rspeaker", 1.00);
-
+    // The SIDs are very noisy
+    m_sid0->add_route(ALL_OUTPUTS, "lspeaker", 0.5);
+    m_sid0->add_route(ALL_OUTPUTS, "rspeaker", 0.5);
+    m_sid1->add_route(ALL_OUTPUTS, "lspeaker", 0.5);
+    m_sid1->add_route(ALL_OUTPUTS, "rspeaker", 0.5);
 
     //set interrupt handler for the RTC
     m_rtc->int_handler().set(FUNC(f256_state::rtc_interrupt_handler));
@@ -127,6 +135,12 @@ void f256_state::f256k(machine_config &config)
         m_in_latch <<= 1;
         m_in_latch |= state;
     });
+
+    m_mouse->set_pc_kbdc(m_ps2_keyboard);
+
+    cbm_iec_slot_device::add(config, m_iec, "iec");
+	m_iec->srq_callback().set(FUNC(f256_state::iec_srq_w));
+	m_iec->data_callback().set(FUNC(f256_state::iec_data_w));
 }
 
 f256_state::~f256_state()
@@ -254,17 +268,17 @@ u8   f256_state::mem_r(offs_t offset)
                     else if (adj_addr >= 0xD400 && adj_addr < 0xD580)
                     {
                         // SID
-                        logerror("SID access?");
+                        return 0;
                     }
                     else if (adj_addr >= 0xD580 && adj_addr < 0xD583)
                     {
                         // OPL3
-                        logerror("OPL3 access?");
+                        return 0;
                     }
                     else if (adj_addr >= 0xD600 && adj_addr < 0xD620)
                     {
                         // PSG - left channel D600, right channel D610 - both D608
-                        logerror("PSG access?");
+                        return 0;
                     }
                     else if (adj_addr >= 0xD620 && adj_addr < 0xD630)
                     {
@@ -388,6 +402,10 @@ u8   f256_state::mem_r(offs_t offset)
 
                         }
                     }
+                    else if (adj_addr >= 0xD680 && adj_addr < 0xD690)
+                    {
+                        //IEC
+                    }
                     else if (adj_addr >= 0xD690 && adj_addr < 0xD6A0)
                     {
                         // RTC
@@ -397,7 +415,7 @@ u8   f256_state::mem_r(offs_t offset)
                     {
                         // System Control Registers
                         // D6A0 - buzzer and LED controls - including RESET bit
-                        // D6A1 -
+                        // D6A1 - sound mixer
                         // D6A2 - Set to 0xDE to enable software reset
                         // D6A3 - Set to 0xAD to enable software reset
                         // D6A4 - D6A6 : Random Number generator
@@ -405,6 +423,8 @@ u8   f256_state::mem_r(offs_t offset)
                         switch (adj_addr){
                             case 0xD6A0:
                                 return m_sdcard->get_card_present() ? 0x10:0;
+                            case 0xD6A1:
+                                return m_iopage0->read(0xD6A1 - 0xC000);
                             case 0xD6A4:
                                 if (m_rng_enabled)
                                 {
@@ -566,6 +586,8 @@ void f256_state::mem_w(offs_t offset, u8 data)
     uint8_t slot = adj_addr >> 13;
     uint16_t low_addr = adj_addr & 0x1FFF;
     uint8_t old, combo;
+    // Debugger
+    debugger_console &con = machine().debugger().console();
 
     uint8_t fslot = mmu_lut[mmu * 8 + slot];
     if (fslot < 0x40)
@@ -614,12 +636,15 @@ void f256_state::mem_w(offs_t offset, u8 data)
                             {
                                 case 0xD580:
                                     m_opl3_reg = data;
+                                    m_opl3->address_w(data);
                                     break;
                                 case 0xD581:
-                                    m_opl3->write(m_opl3_reg, data);
+                                    //m_opl3->write(m_opl3_reg, data);
+                                    if (m_opl3_reg > 0xFF) { m_opl3->data_hi_w(data);} else { m_opl3->data_w(data);}
                                     break;
                                 case 0xD582:
                                     m_opl3_reg = 0x100 + data;
+                                    m_opl3->address_hi_w(data);
                                     break;
                             }
                         }
@@ -671,12 +696,14 @@ void f256_state::mem_w(offs_t offset, u8 data)
                                             // write out the byte in data[1] to keyboard
                                             isK_WR = false;
                                             K_AK = true;
+                                            //m_ps2_keyboard->data_write_from_kb(data);
                                         }
                                         if (isM_WR)
                                         {
                                             // write out the byte in data[1] to mouse
                                             isM_WR = false;
                                             M_AK = true;
+                                            //m_mouse->data_write(data);
                                         }
                                         break;
                                     case 2:
@@ -692,6 +719,10 @@ void f256_state::mem_w(offs_t offset, u8 data)
                                         memset(msFifo, 0, 3);
                                         break;
                                 }
+                            }
+                            else if (delta == 1)
+                            {
+
                             }
                         }
                         else if (adj_addr >= 0xD650 && adj_addr < 0xD660)
@@ -820,6 +851,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                             }
                             if (m_interrupt_reg[0] == 0 && m_interrupt_reg[1] == 0 && m_interrupt_reg[2] == 0)
                             {
+                                con.printf("Clearing Interrupt Line %02X\n", data);
                                 m_maincpu->set_input_line(M6502_IRQ_LINE, CLEAR_LINE);
                             }
                         }
@@ -828,11 +860,50 @@ void f256_state::mem_w(offs_t offset, u8 data)
                             // RTC
                             m_rtc->write(adj_addr - 0xDC90, data);
                         }
-                        else if (adj_addr >= 0xD6A4 && adj_addr < 0xD6A7)
+                        else if (adj_addr >= 0xD6A0 && adj_addr < 0xD6A7)
                         {
                             // RNG
                             switch (adj_addr)
                             {
+                                case 0xD6A1:
+                                    // mix the PSG or SID based on the value
+                                    m_iopage0->write(0xD6A1 - 0xC000, data);
+                                    if ((data & 4) == 0)
+                                    {
+                                        // PSG mix - both outputs to both speakers
+                                        m_sn0->reset_routes();
+                                        m_sn1->reset_routes();
+                                        m_sn0->add_route(ALL_OUTPUTS, "lspeaker", 0.5);
+                                        m_sn0->add_route(ALL_OUTPUTS, "rspeaker", 0.5);
+                                        m_sn1->add_route(ALL_OUTPUTS, "lspeaker", 0.5);
+                                        m_sn1->add_route(ALL_OUTPUTS, "rspeaker", 0.5);
+                                    }
+                                    else
+                                    {
+                                        // PSG0 to left, PSG1 to right
+                                        m_sn0->reset_routes();
+                                        m_sn1->reset_routes();
+                                        m_sn0->add_route(ALL_OUTPUTS, "lspeaker", 1.0);
+                                        m_sn1->add_route(ALL_OUTPUTS, "rspeaker", 1.0);
+                                    }
+                                    if ((data & 8) == 0)
+                                    {
+                                        // SID mix -
+                                        m_sid0->reset_routes();
+                                        m_sid1->reset_routes();
+                                        m_sid0->add_route(ALL_OUTPUTS, "lspeaker", 0.5);
+                                        m_sid0->add_route(ALL_OUTPUTS, "rspeaker", 0.5);
+                                        m_sid1->add_route(ALL_OUTPUTS, "lspeaker", 0.5);
+                                        m_sid1->add_route(ALL_OUTPUTS, "rspeaker", 0.5);
+                                    }
+                                    else
+                                    {
+                                        m_sid0->reset_routes();
+                                        m_sid1->reset_routes();
+                                        m_sid0->add_route(ALL_OUTPUTS, "lspeaker", 1.0);
+                                        m_sid1->add_route(ALL_OUTPUTS, "rspeaker", 1.0);
+                                    }
+                                    break;
                                 case 0xD6A4:
                                     m_seed &= 0xFF00; // zero the low byte
                                     m_seed |= data;   // set the low byte
@@ -1019,6 +1090,48 @@ void f256_state::reset_mmu()
     }
 }
 
+
+//-------------------------------------------------
+//  IEC Methods
+//-------------------------------------------------
+inline void f256_state::update_iec()
+{
+	// int fsdir = m_mmu->fsdir_r();
+
+	// // fast serial data in
+	// int data_in = m_iec->data_r();
+
+	// m_cia1->sp_w(fsdir || data_in);
+
+	// // fast serial data out
+	// int data_out = !m_iec_data_out;
+
+	// if (fsdir) data_out &= m_sp1;
+
+	// m_iec->host_data_w(data_out);
+
+	// // fast serial clock in
+	// m_cia1->cnt_w(fsdir || m_iec_srq);
+
+	// // fast serial clock out
+	// int srq_out = 1;
+
+	// if (fsdir) srq_out &= m_cnt1;
+
+	// m_iec->host_srq_w(srq_out);
+}
+
+void f256_state::iec_srq_w(int state)
+{
+    m_iec_srq = state;
+	update_iec();
+	//update_cia1_flag();
+}
+void f256_state::iec_data_w(int state)
+{
+    update_iec();
+}
+
 //-------------------------------------------------
 //  Math Coprocessor Methods
 //-------------------------------------------------
@@ -1125,6 +1238,7 @@ void f256_state::device_start()
 	driver_device::device_start();
     reset_mmu();
     // TODO: Copy the font from file to IO Page 1
+    //memcpy(m_iopage1, m_font, 0x800);
     for (int i=0;i<0x800;i++)
     {
         m_iopage1->write(i, m_font->as_u8(i));
@@ -1161,6 +1275,8 @@ void f256_state::device_start()
 	save_item(NAME(m_in_bit));
 	save_item(NAME(m_in_latch));
 	save_item(NAME(m_out_latch));
+    save_item(NAME(m_iec_data_out));
+    save_item(NAME(m_iec_srq));
 
     m_timer0 = timer_alloc(FUNC(f256_state::timer0), this);
     m_timer1 = timer_alloc(FUNC(f256_state::timer1), this);
@@ -1175,10 +1291,7 @@ void f256_state::device_reset()
     reset_mmu();
     m_via6522_0->reset();
 	m_via6522_1->reset();
-    m_sid0->reset();
-    m_sid1->reset();
-    m_sn0->reset();
-    m_sn1->reset();
+
     m_opl3->reset();
     m_sdcard->reset();
     m_spi_clock->adjust(attotime::never);
@@ -1186,7 +1299,13 @@ void f256_state::device_reset()
     m_in_bit = 0;
 	m_spi_clock_state = false;
     spi_sd_enabled = 0;
-    // m_mouse->reset();
+    m_mouse->reset();
+
+    m_sid0->reset();
+    m_sid1->reset();
+    m_sn0->reset();
+    m_sn1->reset();
+    m_iec->reset();
 }
 
 //-------------------------------------------------
@@ -1194,8 +1313,11 @@ void f256_state::device_reset()
 //-------------------------------------------------
 void f256_state::sof_interrtupt(int state)
 {
-    if (state && ((m_interrupt_masks[1] & 0x01) == 0))
+    if (state) // && ((m_interrupt_masks[1] & 0x01) == 0))
     {
+        // Debugger
+        debugger_console &con = machine().debugger().console();
+        con.printf("SOF INTERRUPT: %02X\n", state);
         m_interrupt_reg[0] |= 0x01;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1204,6 +1326,9 @@ void f256_state::sol_interrtupt(int state)
 {
     if (state && ((m_interrupt_masks[1] & 0x02) == 0))
     {
+        // Debugger
+        debugger_console &con = machine().debugger().console();
+        con.printf("SOL INTERRUPT: %02X\n", state);
         m_interrupt_reg[0] |= 0x02;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1212,6 +1337,9 @@ void f256_state::rtc_interrupt_handler(int state)
 {
     if (state && ((m_interrupt_masks[1] & 0x10) == 0))
     {
+        // Debugger
+        debugger_console &con = machine().debugger().console();
+        con.printf("RTC INTERRUPT: %02X\n", state);
         m_interrupt_reg[1] |= 0x10;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1222,45 +1350,56 @@ void f256_state::via0_interrupt(int state)
     // if a joystick button is pressed, set the VIA0 interrupt if the mask allows if
     if (state && ((m_interrupt_masks[1] & 0x20) == 0))
     {
+        // Debugger
+        debugger_console &con = machine().debugger().console();
+        con.printf("VIA0 INTERRUPT: %02X\n", state);
         m_interrupt_reg[1] |= 0x20;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
 }
 void f256_state::via1_interrupt(int state)
 {
-    logerror("VIA1 INTERRUPT: %02X\n", state);
     // if a keyboard button is pressed, set the VIA1 interrupt if the mask allows if
     if (state && ((m_interrupt_masks[1] & 0x40) == 0))
     {
+        // Debugger
+        debugger_console &con = machine().debugger().console();
+        con.printf("VIA1 INTERRUPT: %02X\n", state);
         m_interrupt_reg[1] |= 0x40;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
 }
 void f256_state::dma_interrupt_handler(int state)
 {
-    logerror("DMA Interrupt Not implemented!");
     // if (state && ((m_interrupt_masks[1] & 0x10) == 0))
     // {
+    //     // Debugger
+    //     debugger_console &con = machine().debugger().console();
+    //     con.printf("DMA Interrupt Not implemented!");
     //     m_interrupt_reg[1] |= 0x10;
     //     m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     // }
 }
 void f256_state::timer0_interrupt_handler(int state)
 {
-    logerror("TIMER0 INTERRUPT: %02X\n", state);
     // if a keyboard button is pressed, set the VIA1 interrupt if the mask allows if
     if (state && ((m_interrupt_masks[0] & 0x10) == 0))
     {
+        // Debugger
+        debugger_console &con = machine().debugger().console();
+        con.printf("TIMER0 INTERRUPT: %02X\n", state);
         m_interrupt_reg[0] |= 0x10;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
 }
 void f256_state::timer1_interrupt_handler(int state)
 {
-    logerror("TIMER1 INTERRUPT: %02X\n", state);
     // if a keyboard button is pressed, set the VIA1 interrupt if the mask allows if
     if (state && ((m_interrupt_masks[0] & 0x20) == 0))
     {
+        // Debugger
+        debugger_console &con = machine().debugger().console();
+        con.printf("TIMER1 INTERRUPT: %02X\n", state);
         m_interrupt_reg[0] |= 0x20;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1294,6 +1433,8 @@ TIMER_CALLBACK_MEMBER(f256_state::spi_clock)
 
 TIMER_CALLBACK_MEMBER(f256_state::timer0)
 {
+    // Debugger
+    debugger_console &con = machine().debugger().console();
     uint8_t reg_t0 = m_iopage0->read(0xD650 - 0xC000);
     uint32_t cmp = m_iopage0->read(0xD655 - 0xC000) + (m_iopage0->read(0xD656 - 0xC000) << 8) +
             (m_iopage0->read(0xD657 - 0xC000) << 16);
@@ -1304,12 +1445,14 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
         int8_t action = m_iopage0->read(0xD654 - 0xC000);
         if (action & 1)
         {
+            con.printf("TIMER0 Cleared\n");
             m_timer0_val = 0;
         }
         else
         {
             m_timer0_val = m_iopage0->read(0xD651 - 0xC000) + (m_iopage0->read(0xD652 - 0xC000) << 8) +
                 (m_iopage0->read(0xD653 - 0xC000) << 16);
+            con.printf("TIMER0 Reloaded with: %X\n", m_timer0_val);
         }
         m_timer0_eq = 0;
     }
@@ -1328,7 +1471,7 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
             if (m_timer0_val == cmp)
             {
                 m_timer0_eq = 1;
-                logerror("TIMER0 up value reached\n");
+                con.printf("TIMER0 up value reached %X\n", cmp);
             }
 
         }
@@ -1344,14 +1487,20 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
             if (m_timer0_val == cmp)
             {
                 m_timer0_eq = 1;
-                logerror("TIMER0 down value reached\n");
+                con.printf("TIMER0 down value reached %X\n", cmp);
             }
+        }
+        if (m_timer0_eq == 1 && (reg_t0 & 0x80) !=0)
+        {
+            timer0_interrupt_handler(1);
         }
     }
 }
 
 TIMER_CALLBACK_MEMBER(f256_state::timer1)
 {
+    // Debugger
+    debugger_console &con = machine().debugger().console();
     uint8_t reg_t1 = m_iopage0->read(0xD658 - 0xC000);
     uint32_t cmp = m_iopage0->read(0xD65D - 0xC000) + (m_iopage0->read(0xD65E - 0xC000) << 8) +
             (m_iopage0->read(0xD65F - 0xC000) << 16);
@@ -1362,12 +1511,14 @@ TIMER_CALLBACK_MEMBER(f256_state::timer1)
         int8_t action = m_iopage0->read(0xD65C - 0xC000);
         if (action & 1)
         {
+            con.printf("TIMER1 Cleared\n");
             m_timer1_val = 0;
         }
         else
         {
             m_timer1_val = m_iopage0->read(0xD659 - 0xC000) + (m_iopage0->read(0xD65A - 0xC000) << 8) +
                 (m_iopage0->read(0xD65B - 0xC000) << 16);
+            con.printf("TIMER1 Reloaded with %X\n", m_timer1_val);
         }
         m_timer1_eq = 0;
     }
@@ -1386,7 +1537,7 @@ TIMER_CALLBACK_MEMBER(f256_state::timer1)
             if (m_timer1_val == cmp)
             {
                 m_timer1_eq = 1;
-                logerror("TIMER1 up value reached\n");
+                con.printf("TIMER1 up value reached %X\n", cmp);
             }
 
         }
@@ -1402,8 +1553,12 @@ TIMER_CALLBACK_MEMBER(f256_state::timer1)
             if (m_timer1_val == cmp)
             {
                 m_timer1_eq = 1;
-                logerror("TIMER1 down value reached\n");
+                con.printf("TIMER1 up value reached %X\n", cmp);
             }
+        }
+        if (m_timer1_eq == 1 && (reg_t1 & 0x80) !=0)
+        {
+            timer1_interrupt_handler(1);
         }
     }
 }
