@@ -19,7 +19,9 @@
 #include "bus/pc_kbd/hle_mouse.h"
 #include "debug/debugcon.h"
 #include "debugger.h"
-#include "bus/cbmiec/cbmiec.h"
+//#include "bus/cbmiec/cbmiec.h"
+//#include "bus/cbmiec/c1581.h"
+#include "machine/ins8250.h"
 
 #define MASTER_CLOCK        (XTAL(25'175'000))
 #define MUSIC_CLOCK         (XTAL(14'318'181))
@@ -62,9 +64,10 @@ private:
 	required_device<mos6581_device> m_sid0, m_sid1;
 
 	required_device<tiny_vicky_video_device> m_video;
-	required_device<cbm_iec_device> m_iec;
+	//required_device<cbm_iec_device> m_iec;
 	optional_device<pc_kbdc_device> m_ps2_keyboard;
 	optional_device<hle_ps2_mouse_device> m_mouse;
+	required_device<ns16550_device> m_uart;
 
 	// SD Card stuff
 	TIMER_CALLBACK_MEMBER(spi_clock);
@@ -165,11 +168,16 @@ private:
 	void dma_interrupt_handler(int state);
 
 	// Timers
-	uint8_t m_timer0_eq = 0, m_timer1_eq = 0;
-	uint32_t m_timer0_val = 0, m_timer1_val = 0;
+	uint8_t m_timer0_eq = 0;
+	uint32_t m_timer0_load = 0;
+	uint32_t m_timer0_val = 0;
 	TIMER_CALLBACK_MEMBER(timer0);
 	emu_timer *m_timer0;
 	void timer0_interrupt_handler(int state);
+
+	uint8_t m_timer1_eq = 0;
+	uint32_t m_timer1_load = 0;
+	uint32_t m_timer1_val = 0;
 	TIMER_CALLBACK_MEMBER(timer1);
 	emu_timer *m_timer1;
 	void timer1_interrupt_handler(int state);
@@ -180,8 +188,11 @@ private:
 	inline void update_iec();
 	void iec_srq_w(int state);
 	void iec_data_w(int state);
+	void iec_atn_w(int state);
+	void iec_clk_w(int state);
 	int m_iec_data_out;
 	int m_iec_srq;
+	uint8_t m_iec_in, m_iec_out;
 };
 
 #endif // MAME_F256_F256_H

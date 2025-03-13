@@ -46,13 +46,16 @@ f256_state::f256_state(const machine_config &mconfig, device_type type, const ch
     , m_sid1(*this, "sid_1")
 
     , m_video(*this, "tiny_vicky")
-    , m_iec(*this, "iec")
+    //, m_iec(*this, "iec_bus")
     , m_ps2_keyboard(*this, "ps2_kbd")
     , m_mouse(*this, "ps_mouse")
+    , m_uart(*this, "uart")
     , m_sdcard(*this, "sdcard")
 	, m_spi_clock_state(false)
 	, m_spi_clock_sysclk(false)
 	, m_spi_clock_cycles(0)
+    //, m_iec_data_out(1)
+    //, m_iec_srq(1)
 {
 }
 
@@ -137,10 +140,13 @@ void f256_state::f256k(machine_config &config)
     });
 
     m_mouse->set_pc_kbdc(m_ps2_keyboard);
+    NS16550(config, m_uart, MASTER_CLOCK);
 
-    cbm_iec_slot_device::add(config, m_iec, "iec");
-	m_iec->srq_callback().set(FUNC(f256_state::iec_srq_w));
-	m_iec->data_callback().set(FUNC(f256_state::iec_data_w));
+    // cbm_iec_slot_device::add(config, m_iec, "c1581");
+	// m_iec->srq_callback().set(FUNC(f256_state::iec_srq_w));
+	// m_iec->data_callback().set(FUNC(f256_state::iec_data_w));
+    // m_iec->atn_callback().set(FUNC(f256_state::iec_atn_w));
+    // m_iec->clk_callback().set(FUNC(f256_state::iec_clk_w));
 }
 
 f256_state::~f256_state()
@@ -237,6 +243,9 @@ u8   f256_state::mem_r(offs_t offset)
     uint8_t slot = adj_addr >> 13;
     uint16_t low_addr = adj_addr & 0x1FFF;
     uint8_t fslot = mmu_lut[mmu * 8 + slot];
+
+    // Debugger
+    debugger_console &con = machine().debugger().console();
     // fslot < 0x40 is RAM, greater is FLASH/ROM
     if (fslot < 0x40)
     {
@@ -288,7 +297,9 @@ u8   f256_state::mem_r(offs_t offset)
                     else if (adj_addr >= 0xD630 && adj_addr < 0xD640)
                     {
                         // UART
-                        logerror("UART access?");
+                        uint8_t v_uart = m_uart->ins8250_r(adj_addr - 0xD630);
+                        con.printf("UART Read %X %02X\n", adj_addr, v_uart);
+                        return v_uart;
                     }
                     else if (adj_addr >= 0xD640 && adj_addr < 0xD64F)
                     {
@@ -402,9 +413,26 @@ u8   f256_state::mem_r(offs_t offset)
 
                         }
                     }
-                    else if (adj_addr >= 0xD680 && adj_addr < 0xD690)
+                    else if (adj_addr >= 0xD680 && adj_addr < 0xD682)
                     {
                         //IEC
+                        con.printf("Reading from IEC Reg: %X", adj_addr - 0xD680);
+                        switch (adj_addr - 0xD680)
+                        {
+                            case 0:
+                                con.printf(", data: %02X\n", m_iec_in);
+                                // gather the IEC bus values
+                                // m_iec_in =
+                                //     (m_iec->srq_r() << 7) +
+                                //     (m_iec->atn_r() << 4) +
+                                //     (m_iec->clk_r() << 1) +
+                                //     (m_iec->data_r());
+                                // con.printf(", data: %02X\n", m_iec_in);
+                                return m_iec_in;
+                            case 1:
+                                con.printf(", data: %02X\n", m_iec_out);
+                                return m_iec_out;
+                        }
                     }
                     else if (adj_addr >= 0xD690 && adj_addr < 0xD6A0)
                     {
@@ -446,7 +474,7 @@ u8   f256_state::mem_r(offs_t offset)
                             case 0xD6A6:
                                 return m_rng_enabled ? 0x80: 0;
                             case 0xD6A7:
-                                return 0x12;
+                                return 0x12;  // F256K ID
                             case 0XD6A8:
                                 return 'A';
                             case 0XD6A9:
@@ -470,19 +498,16 @@ u8   f256_state::mem_r(offs_t offset)
                     {
                         // NES
                         return 0xFF;
-
                     }
                     else if (adj_addr >= 0xDB00 && adj_addr < 0xDB10)
                     {
                         // VIA1 - Keyboard for F256K
                         return m_via6522_1->read(adj_addr - 0xDB00);
-
                     }
                     else if (adj_addr >= 0xDC00 && adj_addr < 0xDC10)
                     {
                         // VIA0 - Atari Joystick
                         return m_via6522_0->read(adj_addr - 0xDC00);
-
                     }
                     else if (adj_addr >= 0xDD00 && adj_addr < 0xDD20)
                     {
@@ -679,6 +704,8 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xD630 && adj_addr < 0xD640)
                         {
                             // UART
+                            con.printf("UART Writing %X %02X\n", adj_addr, data);
+                            m_uart->ins8250_w(adj_addr - 0xD630, data);
                         }
                         else if (adj_addr >= 0xD640 && adj_addr < 0xD64F)
                         {
@@ -728,57 +755,76 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xD650 && adj_addr < 0xD660)
                         {
                             // Timers
+                            con.printf("Writing to Timer Register: %X, %02X\n", adj_addr, data);
                             m_iopage0->write(adj_addr - 0xC000, data);
-                            if (adj_addr == 0xD650)
+                            switch(adj_addr)
                             {
-                                if ((data & 0x1) == 1)
-                                {
-                                    logerror("Start Timer0\n");
-                                    m_timer0->adjust(attotime::from_hz(XTAL(25'175'000)), 0, attotime::from_hz(XTAL(25'175'000)));
-                                }
-                                else
-                                {
-                                    logerror("Stop Timer0\n");
-                                    m_timer0->adjust(attotime::never);
-                                }
+                                case 0xD650:
+                                    if ((data & 0x1) == 1)
+                                    {
+                                        con.printf("Start Timer0\n");
+                                        m_timer0->adjust(attotime::from_hz(XTAL(25'175'000)), 0, attotime::from_hz(XTAL(25'175'000)));
+                                    }
+                                    else
+                                    {
+                                        con.printf("Stop Timer0\n");
+                                        m_timer0->adjust(attotime::never);
+                                    }
 
-                                if ((data & 0x2) != 0)
-                                {
-                                    m_timer0_val = 0;
-                                }
-                                if ((data & 0x4) != 0)
-                                {
-                                    m_timer0_val = m_iopage0->read(0xD651 - 0xC000) + (m_iopage0->read(0xD652 - 0xC000) << 8) +
-                                        (m_iopage0->read(0xD653 - 0xC000) << 16);
-                                }
-                            }
-                            else if (adj_addr == 0xD658)
-                            {
-                                if ((data & 0x1) == 1)
-                                {
-                                    logerror("Start Timer1\n");
-                                    m_timer1->adjust(attotime::from_hz(XTAL(60)), 0, attotime::from_hz(XTAL(60)));
-                                }
-                                else
-                                {
-                                    logerror("Stop Timer1\n");
-                                    m_timer1->adjust(attotime::never);
-                                }
+                                    if ((data & 0x2) != 0)
+                                    {
+                                        m_timer0_val = 0;
+                                    }
+                                    if ((data & 0x4) != 0)
+                                    {
+                                        m_timer0_val = m_timer0_load;
+                                    }
+                                    break;
+                                case 0xD651:
+                                case 0xD652:
+                                case 0xD653:
+                                    // writing to these registers sets the load value
+                                    m_timer0_load = m_iopage0->read(0xD651 - 0xC000) + (m_iopage0->read(0xD652 - 0xC000) << 8) +
+                                            (m_iopage0->read(0xD653 - 0xC000) << 16);
+                                    break;
+                                case 0xD658:
+                                    if ((data & 0x1) == 1)
+                                    {
+                                        con.printf("Start Timer1 %X, %X\n", data, m_timer1_val);
+                                        // Get the frame frequency from video
+                                        int frame_freq = (m_iopage0->read(0xD001 - 0xC000) & 1) == 1? 70: 60;
+                                        m_timer1->adjust(attotime::from_hz(XTAL(frame_freq)), 0, attotime::from_hz(XTAL(frame_freq)));
+                                    }
+                                    else
+                                    {
+                                        con.printf("Stop Timer1\n");
+                                        m_timer1->adjust(attotime::never);
+                                    }
 
-                                if ((data & 0x2) != 0)
-                                {
-                                    m_timer1_val = 0;
-                                }
-                                if ((data & 0x4) != 0)
-                                {
-                                    m_timer1_val = m_iopage0->read(0xD659 - 0xC000) + (m_iopage0->read(0xD65A - 0xC000) << 8) +
-                                        (m_iopage0->read(0xD65B - 0xC000) << 16);
-                                }
+                                    if ((data & 0x2) != 0)
+                                    {
+                                        con.printf("Timer1 value = 0\n");
+                                        m_timer1_val = 0;
+                                    }
+                                    if ((data & 0x4) != 0)
+                                    {
+                                        m_timer1_val = m_timer1_load;
+                                        con.printf("Timer1 value = %06X\n", m_timer1_val);
+                                    }
+                                    break;
+                                case 0xD659:
+                                case 0xD65A:
+                                case 0xD65B:
+                                    // writing to these registers sets the load value
+                                    m_timer1_load = m_iopage0->read(0xD659 - 0xC000) + (m_iopage0->read(0xD65A - 0xC000) << 8) +
+                                            (m_iopage0->read(0xD65B - 0xC000) << 16);
+                                    break;
                             }
                         }
                         else if (adj_addr >= 0xD660 && adj_addr < 0xD670)
                         {
                             // Interrupt Registers
+                            //con.printf("Interrupt Register: %04X with %02X\n", adj_addr, data);
                             switch (adj_addr)
                             {
                                 case 0xD660:
@@ -851,8 +897,29 @@ void f256_state::mem_w(offs_t offset, u8 data)
                             }
                             if (m_interrupt_reg[0] == 0 && m_interrupt_reg[1] == 0 && m_interrupt_reg[2] == 0)
                             {
-                                con.printf("Clearing Interrupt Line %02X\n", data);
+                                //con.printf("Clearing Interrupt Line\n");
                                 m_maincpu->set_input_line(M6502_IRQ_LINE, CLEAR_LINE);
+                            }
+                        }
+                        //IEC  - 0xD680 is not writable
+                        else if (adj_addr >= 0xD680 && adj_addr < 0xD682)
+                        {
+                            con.printf("Writing to IEC reg %X %02X\n", adj_addr, data);
+                            if (adj_addr == 0xD681)
+                            {
+                                m_iec_out = data;
+                                // Bit 6 is RESET
+                                // m_iec->host_reset_w((data & 0x40) >> 6);
+
+                                // // distribute these to the IEC bus
+                                // m_iec->host_clk_w((data & 2) >> 1);
+                                // m_iec->host_data_w(data & 1);
+                                // m_iec->host_atn_w((data & 0x10) >> 4);
+                                // m_iec->host_srq_w((data & 0x80) >> 7);
+
+                                // fake the bus
+                                m_iec_in &= 0xFE;
+                                m_iec_in |= (data & 1);
                             }
                         }
                         else if (adj_addr >= 0xD690 && adj_addr < 0xD6A0)
@@ -1035,7 +1102,6 @@ void f256_state::mem_w(offs_t offset, u8 data)
                                         }
                                     }
                             }
-
                         }
                         // stick everything else in Vicky
                             // (adj_addr >= 0xC000 && adj_addr < 0xD400) ||  // gamma, mouse graphics, vicky registers, bitmaps, tiles
@@ -1098,40 +1164,80 @@ inline void f256_state::update_iec()
 {
 	// int fsdir = m_mmu->fsdir_r();
 
-	// // fast serial data in
-	// int data_in = m_iec->data_r();
+	// fast serial data in
+	//int data_in = m_iec->data_r();
 
 	// m_cia1->sp_w(fsdir || data_in);
 
-	// // fast serial data out
-	// int data_out = !m_iec_data_out;
+	// fast serial data out
+	//int data_out = !m_iec_data_out;
 
-	// if (fsdir) data_out &= m_sp1;
+	//if (fsdir) data_out &= m_sp1;
 
-	// m_iec->host_data_w(data_out);
+	//m_iec->host_data_w(data_out);
 
-	// // fast serial clock in
+	// fast serial clock in
 	// m_cia1->cnt_w(fsdir || m_iec_srq);
 
-	// // fast serial clock out
-	// int srq_out = 1;
+	// fast serial clock out
+	//int srq_out = m_iec_srq;
 
 	// if (fsdir) srq_out &= m_cnt1;
 
-	// m_iec->host_srq_w(srq_out);
+	//m_iec->host_srq_w(srq_out);
 }
 
 void f256_state::iec_srq_w(int state)
 {
+    // Debugger
+    debugger_console &con = machine().debugger().console();
+    con.printf("Event iec_srq_w: %X\n", state);
+
     m_iec_srq = state;
+
+    if (state && ((m_interrupt_masks[2] & 0x8) == 0))
+    {
+        m_interrupt_reg[2] |= 0x8;
+        m_maincpu->set_input_line((m_iec_out & 0x20) !=0 ? M6502_NMI_LINE:M6502_IRQ_LINE, state);
+    }
+
 	update_iec();
-	//update_cia1_flag();
 }
 void f256_state::iec_data_w(int state)
 {
+    // Debugger
+    debugger_console &con = machine().debugger().console();
+    con.printf("Event iec_data_w: %X\n", state);
+
+    if (state && ((m_interrupt_masks[2] & 0x1) == 0))
+    {
+        m_interrupt_reg[2] |= 0x1;
+        m_maincpu->set_input_line((m_iec_out & 0x20) !=0 ? M6502_NMI_LINE:M6502_IRQ_LINE, state);
+    }
     update_iec();
 }
-
+void f256_state::iec_atn_w(int state)
+{
+    // Debugger
+    debugger_console &con = machine().debugger().console();
+    con.printf("Event iec_atn_w: %X\n", state);
+    if (state && ((m_interrupt_masks[2] & 0x4) == 0))
+    {
+        m_interrupt_reg[2] |= 0x4;
+        m_maincpu->set_input_line((m_iec_out & 0x20) !=0 ? M6502_NMI_LINE:M6502_IRQ_LINE, state);
+    }
+}
+void f256_state::iec_clk_w(int state)
+{
+    // Debugger
+    debugger_console &con = machine().debugger().console();
+    con.printf("Event iec_clk_w: %X\n", state);
+    if (state && ((m_interrupt_masks[2] & 0x2) == 0))
+    {
+        m_interrupt_reg[2] |= 0x2;
+        m_maincpu->set_input_line((m_iec_out & 0x20) !=0 ? M6502_NMI_LINE:M6502_IRQ_LINE, state);
+    }
+}
 //-------------------------------------------------
 //  Math Coprocessor Methods
 //-------------------------------------------------
@@ -1275,7 +1381,6 @@ void f256_state::device_start()
 	save_item(NAME(m_in_bit));
 	save_item(NAME(m_in_latch));
 	save_item(NAME(m_out_latch));
-    save_item(NAME(m_iec_data_out));
     save_item(NAME(m_iec_srq));
 
     m_timer0 = timer_alloc(FUNC(f256_state::timer0), this);
@@ -1305,7 +1410,13 @@ void f256_state::device_reset()
     m_sid1->reset();
     m_sn0->reset();
     m_sn1->reset();
-    m_iec->reset();
+    //m_iec->reset();
+    m_uart->reset();
+
+    m_timer0_load = 0;
+    m_timer0_val = 0;
+    m_timer1_load = 0;
+    m_timer1_val = 0;
 }
 
 //-------------------------------------------------
@@ -1316,8 +1427,8 @@ void f256_state::sof_interrtupt(int state)
     if (state) // && ((m_interrupt_masks[1] & 0x01) == 0))
     {
         // Debugger
-        debugger_console &con = machine().debugger().console();
-        con.printf("SOF INTERRUPT: %02X\n", state);
+        // debugger_console &con = machine().debugger().console();
+        // con.printf("SOF INTERRUPT: %02X\n", state);
         m_interrupt_reg[0] |= 0x01;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1335,11 +1446,12 @@ void f256_state::sol_interrtupt(int state)
 }
 void f256_state::rtc_interrupt_handler(int state)
 {
-    if (state && ((m_interrupt_masks[1] & 0x10) == 0))
+    // this is really odd: if I set state==1, then the interrupt gets only called once.
+    if (state == 0 && ((m_interrupt_masks[1] & 0x10) == 0))
     {
         // Debugger
         debugger_console &con = machine().debugger().console();
-        con.printf("RTC INTERRUPT: %02X\n", state);
+        con.printf("RTC INTERRUPT: %d\n", m_rtc->clock());
         m_interrupt_reg[1] |= 0x10;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1450,8 +1562,7 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
         }
         else
         {
-            m_timer0_val = m_iopage0->read(0xD651 - 0xC000) + (m_iopage0->read(0xD652 - 0xC000) << 8) +
-                (m_iopage0->read(0xD653 - 0xC000) << 16);
+            m_timer0_val = m_timer0_load;
             con.printf("TIMER0 Reloaded with: %X\n", m_timer0_val);
         }
         m_timer0_eq = 0;
@@ -1462,6 +1573,7 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
         {
             // up
             m_timer0_val++;
+
             // it's a 24 bit register
             if (m_timer0_val == 0x100'0000)
             {
@@ -1516,8 +1628,7 @@ TIMER_CALLBACK_MEMBER(f256_state::timer1)
         }
         else
         {
-            m_timer1_val = m_iopage0->read(0xD659 - 0xC000) + (m_iopage0->read(0xD65A - 0xC000) << 8) +
-                (m_iopage0->read(0xD65B - 0xC000) << 16);
+            m_timer1_val = m_timer1_load;
             con.printf("TIMER1 Reloaded with %X\n", m_timer1_val);
         }
         m_timer1_eq = 0;
@@ -1528,6 +1639,7 @@ TIMER_CALLBACK_MEMBER(f256_state::timer1)
         {
             // up
             m_timer1_val++;
+
             // it's a 24 bit register
             if (m_timer1_val == 0x100'0000)
             {
@@ -1786,11 +1898,11 @@ ROM_START(f256k)
     ROM_LOAD("sb04.bin",             0x08'A000, 0x2000, CRC(f4aa6049) SHA1(11f02fee6ec412f0c96b27b0b149f72cf1770d15))
     ROM_LOAD("dos.bin",              0x08'C000, 0x2000, CRC(f3673c4e) SHA1(9c6b70067d7195d4a6bbd7f379b8e5382bf8cc1b))
     ROM_LOAD("pexec.bin",            0x08'E000, 0x2000, CRC(937c1374) SHA1(40566a51d2ef7321a42fe926b03dee3571c78202))
-	ROM_LOAD("3b.bin",               0x0F'6000, 0x2000, CRC(00ef4052) SHA1(188170bd7fee6f1507e0b04d5fdee558561d5cba))
-    ROM_LOAD("3c.bin",               0x0F'8000, 0x2000, CRC(2d864773) SHA1(38b09a962ab67c5f5d788ab72d5f93e72d290c80))
+	ROM_LOAD("3b.bin",               0x0F'6000, 0x2000, CRC(6173e545) SHA1(e6555ae62f2de0dee955e02cffdb401f764dc19d))
+    ROM_LOAD("3c.bin",               0x0F'8000, 0x2000, CRC(479ad49a) SHA1(503449ff7884b1b38769dd86bbf040ba1fdd1829))
     ROM_LOAD("3d.bin",               0x0F'A000, 0x2000, CRC(97743cb7) SHA1(693fa7762528eca6a75c9ea30a603dadc4d55cf9))
     ROM_LOAD("3e.bin",               0x0F'C000, 0x2000, CRC(9012398f) SHA1(4ae1e37aa3ad4c2b498bf1797d591d7fa25a9d43))
-    ROM_LOAD("3f.bin",               0x0F'E000, 0x2000, CRC(f692957f) SHA1(b17026bb39ede3719775fb0d80bd170ef4302ac1))
+    ROM_LOAD("3f.bin",               0x0F'E000, 0x2000, CRC(0e29a4d4) SHA1(9bccc2af951c80a13f5fd37811d197fb34f20fcd))
     ROM_LOAD("docs_superbasic1.bin", 0x09'6000, 0x2000, CRC(ad6398cd) SHA1(d926ae72f8f3af2a0b15ac165bc680db2e647740))
     ROM_LOAD("docs_superbasic2.bin", 0x09'8000, 0x2000, CRC(3cf07824) SHA1(b92e88a99ccf51461f45d317e3e555c5d62792eb))
     ROM_LOAD("docs_superbasic3.bin", 0x09'A000, 0x2000, CRC(838cb5df) SHA1(103b182ad76c185c4a779f4865c48c5fc71e2a14))
