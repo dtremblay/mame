@@ -760,10 +760,17 @@ void f256_state::mem_w(offs_t offset, u8 data)
                             switch(adj_addr)
                             {
                                 case 0xD650:
+                                    // Timer0 is based on Master Clock and causes some slow down.
+                                    // I'm computing the next period and avoiding increments by one.
                                     if ((data & 0x1) == 1)
                                     {
-                                        con.printf("Start Timer0\n");
-                                        m_timer0->adjust(attotime::from_hz(XTAL(25'175'000)), 0, attotime::from_hz(XTAL(25'175'000)));
+
+                                        uint32_t timer0_cmp = m_iopage0->read(0xD655 - 0xC000) +
+                                            (m_iopage0->read(0xD656 - 0xC000) << 8) +
+                                            (m_iopage0->read(0xD657 - 0xC000) << 16);
+                                        con.printf("Start Timer0: %06X\n", timer0_cmp);
+                                        attotime period = attotime::from_double((double)(timer0_cmp - m_timer0_load)/(double)25'175'000);
+                                        m_timer0->adjust(period, 0, period);
                                     }
                                     else
                                     {
@@ -788,6 +795,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                                             (m_iopage0->read(0xD653 - 0xC000) << 16);
                                     break;
                                 case 0xD658:
+                                    // Timer1 is based on the Start of Frame - so it's very slow
                                     if ((data & 0x1) == 1)
                                     {
                                         con.printf("Start Timer1 %X, %X\n", data, m_timer1_val);
@@ -1450,8 +1458,8 @@ void f256_state::rtc_interrupt_handler(int state)
     if (state == 0 && ((m_interrupt_masks[1] & 0x10) == 0))
     {
         // Debugger
-        debugger_console &con = machine().debugger().console();
-        con.printf("RTC INTERRUPT: %d\n", m_rtc->clock());
+        //debugger_console &con = machine().debugger().console();
+        //con.printf("RTC INTERRUPT: %X:%X:%X\n", m_rtc->read(4), m_rtc->read(2), m_rtc->read(0));
         m_interrupt_reg[1] |= 0x10;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1543,71 +1551,84 @@ TIMER_CALLBACK_MEMBER(f256_state::spi_clock)
 	}
 }
 
+// This is the optimized function for Timer0
 TIMER_CALLBACK_MEMBER(f256_state::timer0)
 {
-    // Debugger
     debugger_console &con = machine().debugger().console();
+    con.printf("Timer0 reached value: %06X\n", m_timer0_load);
     uint8_t reg_t0 = m_iopage0->read(0xD650 - 0xC000);
-    uint32_t cmp = m_iopage0->read(0xD655 - 0xC000) + (m_iopage0->read(0xD656 - 0xC000) << 8) +
-            (m_iopage0->read(0xD657 - 0xC000) << 16);
-
-    // if timer as reached value, then execute the action
-    if (m_timer0_eq == 1)
+    if ((reg_t0 & 0x80) !=0)
     {
-        int8_t action = m_iopage0->read(0xD654 - 0xC000);
-        if (action & 1)
-        {
-            con.printf("TIMER0 Cleared\n");
-            m_timer0_val = 0;
-        }
-        else
-        {
-            m_timer0_val = m_timer0_load;
-            con.printf("TIMER0 Reloaded with: %X\n", m_timer0_val);
-        }
-        m_timer0_eq = 0;
-    }
-    else
-    {
-        if ((reg_t0 & 8) != 0)
-        {
-            // up
-            m_timer0_val++;
-
-            // it's a 24 bit register
-            if (m_timer0_val == 0x100'0000)
-            {
-                m_timer0_val = 0;
-            }
-
-            if (m_timer0_val == cmp)
-            {
-                m_timer0_eq = 1;
-                con.printf("TIMER0 up value reached %X\n", cmp);
-            }
-
-        }
-        else
-        {
-            // down
-            m_timer0_val--;
-            // roll over to 24 bits
-            if (m_timer0_val == 0xFFFF'FFFF)
-            {
-                m_timer0_val = 0xFF'FFFF;
-            }
-            if (m_timer0_val == cmp)
-            {
-                m_timer0_eq = 1;
-                con.printf("TIMER0 down value reached %X\n", cmp);
-            }
-        }
-        if (m_timer0_eq == 1 && (reg_t0 & 0x80) !=0)
-        {
-            timer0_interrupt_handler(1);
-        }
+        timer0_interrupt_handler(1);
     }
 }
+// TIMER_CALLBACK_MEMBER(f256_state::timer0)
+// {
+//     // Debugger
+//     debugger_console &con = machine().debugger().console();
+//     uint8_t reg_t0 = m_iopage0->read(0xD650 - 0xC000);
+//     uint32_t cmp = m_iopage0->read(0xD655 - 0xC000) + (m_iopage0->read(0xD656 - 0xC000) << 8) +
+//             (m_iopage0->read(0xD657 - 0xC000) << 16);
+
+//     // if timer as reached value, then execute the action
+//     if (m_timer0_eq == 1)
+//     {
+//         int8_t action = m_iopage0->read(0xD654 - 0xC000);
+//         if (action & 1)
+//         {
+//             con.printf("TIMER0 Cleared\n");
+//             m_timer0_val = 0;
+//         }
+//         else
+//         {
+//             m_timer0_val = m_timer0_load;
+//             con.printf("TIMER0 Reloaded with: %X\n", m_timer0_val);
+//         }
+//         m_timer0_eq = 0;
+//     }
+//     else
+//     {
+//         if ((reg_t0 & 8) != 0)
+//         {
+//             // up
+//             m_timer0_val++;
+
+//             // it's a 24 bit register
+//             if (m_timer0_val == 0x100'0000)
+//             {
+//                 m_timer0_val = 0;
+//             }
+
+//             if (m_timer0_val == cmp)
+//             {
+//                 m_timer0_eq = 1;
+//                 con.printf("TIMER0 up value reached %X\n", cmp);
+//             }
+
+//         }
+//         else
+//         {
+//             // down
+//             m_timer0_val--;
+//             // roll over to 24 bits
+//             if (m_timer0_val == 0xFFFF'FFFF)
+//             {
+//                 m_timer0_val = 0xFF'FFFF;
+//             }
+//             if (m_timer0_val == cmp)
+//             {
+//                 m_timer0_eq = 1;
+//                 con.printf("TIMER0 down value reached %X\n", cmp);
+//             }
+//         }
+//         if (m_timer0_eq == 1 && (reg_t0 & 0x80) !=0)
+//         {
+//             timer0_interrupt_handler(1);
+//         }
+//     }
+// }
+
+
 
 TIMER_CALLBACK_MEMBER(f256_state::timer1)
 {

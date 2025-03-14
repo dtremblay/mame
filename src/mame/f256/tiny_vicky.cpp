@@ -125,7 +125,8 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
                 else
                 {
                     rgb_t background_color = rgb_t();
-                    if (enable_graphics)
+                    // only draw the even lines
+                    if (enable_graphics && y % 2 == 0)
                     {
                         if (!enable_gamma)
                         {
@@ -139,59 +140,68 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
                         }
                     }
                     // draw the border or background
-                    for (int x = 0; x < 640; x++)
+                    if (y % 2 == 0)
                     {
-                        row[x] = x < border_x || x >= 640 - border_x ? border_color : background_color;
+                        for (int x = 0; x < 640; x++)
+                        {
+                            row[x] = x < border_x || x >= 640 - border_x ? border_color : background_color;
+                        }
+                        memcpy(row+800,row, 640*4);
                     }
 
                     if (enable_graphics)
                     {
-                        // Tiny Vicky Layers for Bitmaps, Tilemaps and sprites
-                        uint8_t LayerMgr0 = iopage0_ptr[0xD002 - 0xC000] & 0x7;
-                        uint8_t LayerMgr1 = iopage0_ptr[0xD002 - 0xC000] >> 4;
-                        uint8_t LayerMgr2 = iopage0_ptr[0xD003 - 0xC000] & 0x7;
+                        if (y % 2 == 0)
+                        {
+                            // Tiny Vicky Layers for Bitmaps, Tilemaps and sprites
+                            uint8_t LayerMgr0 = iopage0_ptr[0xD002 - 0xC000] & 0x7;
+                            uint8_t LayerMgr1 = iopage0_ptr[0xD002 - 0xC000] >> 4;
+                            uint8_t LayerMgr2 = iopage0_ptr[0xD003 - 0xC000] & 0x7;
 
-                        // draw layers starting from the back
-                        if ((mcr & 0x20) != 0)
-                        {
-                            draw_sprites(row, enable_gamma, 3, display_border, border_x, border_y, y, (uint16_t)640, lines / 2);
-                        }
-                        if ((mcr & 0x8) != 0 && LayerMgr2 < 3)
-                        {
-                            draw_bitmap(row, enable_gamma, LayerMgr2, display_border, background_color, border_x, border_y, y, (uint16_t)640);
+                            // draw layers starting from the back
+                            if ((mcr & 0x20) != 0)
+                            {
+                                draw_sprites(row, enable_gamma, 3, display_border, border_x, border_y, y, (uint16_t)640, lines / 2);
+                            }
+                            if ((mcr & 0x8) != 0 && LayerMgr2 < 3)
+                            {
+                                draw_bitmap(row, enable_gamma, LayerMgr2, display_border, background_color, border_x, border_y, y, (uint16_t)640);
 
-                        }
-                        if ((mcr & 0x10) != 0 && (LayerMgr2 > 3 && LayerMgr2 < 7))
-                        {
-                            draw_tiles(row, enable_gamma, LayerMgr2 & 3, display_border, border_x, y, (uint16_t)640);
-                        }
-                        if ((mcr & 0x20) != 0)
-                        {
-                            draw_sprites(row, enable_gamma, 2, display_border, border_x, border_y, y, (uint16_t)640, lines/2);
-                        }
-                        if ((mcr & 0x8) != 0 && LayerMgr1 < 3)
-                        {
-                            draw_bitmap(row, enable_gamma, LayerMgr1, display_border, background_color, border_x, border_y, y, (uint16_t)640);
-                        }
-                        if ((mcr & 0x10) != 0 && (LayerMgr1 > 3 && LayerMgr1 < 7))
-                        {
-                            draw_tiles(row, enable_gamma, LayerMgr1 & 3, display_border, border_x, y, (uint16_t)640);
-                        }
-                        if ((mcr & 0x20) != 0)
-                        {
-                            draw_sprites(row, enable_gamma, 1, display_border, border_x, border_y, y, (uint16_t)640, lines / 2);
-                        }
-                        if ((mcr & 0x8) != 0 && LayerMgr0 < 3)
-                        {
-                            draw_bitmap(row, enable_gamma, LayerMgr0, display_border, background_color, border_x, border_y, y, (uint16_t)640);
-                        }
-                        if ((mcr & 0x10) != 0 && (LayerMgr0 > 3 && LayerMgr0 < 7))
-                        {
-                            draw_tiles(row, enable_gamma, LayerMgr0 & 3, display_border, border_x, y, (uint16_t)640);
-                        }
-                        if ((mcr & 0x20) != 0)
-                        {
-                            draw_sprites(row, enable_gamma, 0, display_border, border_x, border_y, y, (uint16_t)640, lines/ 2);
+                            }
+                            if ((mcr & 0x10) != 0 && (LayerMgr2 > 3 && LayerMgr2 < 7))
+                            {
+                                draw_tiles(row, enable_gamma, LayerMgr2 & 3, display_border, border_x, y, (uint16_t)640);
+                            }
+                            if ((mcr & 0x20) != 0)
+                            {
+                                draw_sprites(row, enable_gamma, 2, display_border, border_x, border_y, y, (uint16_t)640, lines/2);
+                            }
+                            if ((mcr & 0x8) != 0 && LayerMgr1 < 3)
+                            {
+                                draw_bitmap(row, enable_gamma, LayerMgr1, display_border, background_color, border_x, border_y, y, (uint16_t)640);
+                            }
+                            if ((mcr & 0x10) != 0 && (LayerMgr1 > 3 && LayerMgr1 < 7))
+                            {
+                                draw_tiles(row, enable_gamma, LayerMgr1 & 3, display_border, border_x, y, (uint16_t)640);
+                            }
+                            if ((mcr & 0x20) != 0)
+                            {
+                                draw_sprites(row, enable_gamma, 1, display_border, border_x, border_y, y, (uint16_t)640, lines / 2);
+                            }
+                            if ((mcr & 0x8) != 0 && LayerMgr0 < 3)
+                            {
+                                draw_bitmap(row, enable_gamma, LayerMgr0, display_border, background_color, border_x, border_y, y, (uint16_t)640);
+                            }
+                            if ((mcr & 0x10) != 0 && (LayerMgr0 > 3 && LayerMgr0 < 7))
+                            {
+                                draw_tiles(row, enable_gamma, LayerMgr0 & 3, display_border, border_x, y, (uint16_t)640);
+                            }
+                            if ((mcr & 0x20) != 0)
+                            {
+                                draw_sprites(row, enable_gamma, 0, display_border, border_x, border_y, y, (uint16_t)640, lines/ 2);
+                            }
+                            // copy the odd line now
+                            memcpy(row + 800, row, 640 * 4);
                         }
                     }
                     // Only display text in these cases
