@@ -148,7 +148,6 @@ void f256_state::f256k(machine_config &config)
     // m_iec->atn_callback().set(FUNC(f256_state::iec_atn_w));
     // m_iec->clk_callback().set(FUNC(f256_state::iec_clk_w));
 }
-
 f256_state::~f256_state()
 {
 }
@@ -237,6 +236,7 @@ void f256_state::lut_w(offs_t offset, u8 data)
 // offsets are 0x10 based
 u8   f256_state::mem_r(offs_t offset)
 {
+    
     // find which slot to read
     uint8_t mmu = m_mmu_reg & 3;
     uint16_t adj_addr = offset + 0x10;
@@ -244,8 +244,6 @@ u8   f256_state::mem_r(offs_t offset)
     uint16_t low_addr = adj_addr & 0x1FFF;
     uint8_t fslot = mmu_lut[mmu * 8 + slot];
 
-    // Debugger
-    debugger_console &con = machine().debugger().console();
     // fslot < 0x40 is RAM, greater is FLASH/ROM
     if (fslot < 0x40)
     {
@@ -298,7 +296,7 @@ u8   f256_state::mem_r(offs_t offset)
                     {
                         // UART
                         uint8_t v_uart = m_uart->ins8250_r(adj_addr - 0xD630);
-                        con.printf("UART Read %X %02X\n", adj_addr, v_uart);
+                        logerror("UART Read %X %02X\n", adj_addr, v_uart);
                         return v_uart;
                     }
                     else if (adj_addr >= 0xD640 && adj_addr < 0xD64F)
@@ -416,21 +414,21 @@ u8   f256_state::mem_r(offs_t offset)
                     else if (adj_addr >= 0xD680 && adj_addr < 0xD682)
                     {
                         //IEC
-                        con.printf("Reading from IEC Reg: %X", adj_addr - 0xD680);
+                        logerror("Reading from IEC Reg: %X", adj_addr - 0xD680);
                         switch (adj_addr - 0xD680)
                         {
                             case 0:
-                                con.printf(", data: %02X\n", m_iec_in);
+                                logerror(", data: %02X\n", m_iec_in);
                                 // gather the IEC bus values
                                 // m_iec_in =
                                 //     (m_iec->srq_r() << 7) +
                                 //     (m_iec->atn_r() << 4) +
                                 //     (m_iec->clk_r() << 1) +
                                 //     (m_iec->data_r());
-                                // con.printf(", data: %02X\n", m_iec_in);
+                                // logerror(", data: %02X\n", m_iec_in);
                                 return m_iec_in;
                             case 1:
-                                con.printf(", data: %02X\n", m_iec_out);
+                                logerror(", data: %02X\n", m_iec_out);
                                 return m_iec_out;
                         }
                     }
@@ -611,12 +609,11 @@ void f256_state::mem_w(offs_t offset, u8 data)
     uint8_t slot = adj_addr >> 13;
     uint16_t low_addr = adj_addr & 0x1FFF;
     uint8_t old, combo;
-    // Debugger
-    debugger_console &con = machine().debugger().console();
-
+    
     uint8_t fslot = mmu_lut[mmu * 8 + slot];
     if (fslot < 0x40)
     {
+
         // Slot 6 is where I/O devices are located, when IO_DISABLE is 0
         if (slot == 6)
         {
@@ -704,7 +701,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xD630 && adj_addr < 0xD640)
                         {
                             // UART
-                            con.printf("UART Writing %X %02X\n", adj_addr, data);
+                            logerror("UART Writing %X %02X\n", adj_addr, data);
                             m_uart->ins8250_w(adj_addr - 0xD630, data);
                         }
                         else if (adj_addr >= 0xD640 && adj_addr < 0xD64F)
@@ -755,7 +752,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xD650 && adj_addr < 0xD660)
                         {
                             // Timers
-                            con.printf("Writing to Timer Register: %X, %02X\n", adj_addr, data);
+                            logerror("Writing to Timer Register: %X, %02X\n", adj_addr, data);
                             m_iopage0->write(adj_addr - 0xC000, data);
                             switch(adj_addr)
                             {
@@ -768,13 +765,13 @@ void f256_state::mem_w(offs_t offset, u8 data)
                                         uint32_t timer0_cmp = m_iopage0->read(0xD655 - 0xC000) +
                                             (m_iopage0->read(0xD656 - 0xC000) << 8) +
                                             (m_iopage0->read(0xD657 - 0xC000) << 16);
-                                        con.printf("Start Timer0: %06X\n", timer0_cmp);
+                                        logerror("Start Timer0: %06X\n", timer0_cmp);
                                         attotime period = attotime::from_double((double)(timer0_cmp - m_timer0_load)/(double)25'175'000);
                                         m_timer0->adjust(period, 0, period);
                                     }
                                     else
                                     {
-                                        con.printf("Stop Timer0\n");
+                                        logerror("Stop Timer0\n");
                                         m_timer0->adjust(attotime::never);
                                     }
 
@@ -798,26 +795,26 @@ void f256_state::mem_w(offs_t offset, u8 data)
                                     // Timer1 is based on the Start of Frame - so it's very slow
                                     if ((data & 0x1) == 1)
                                     {
-                                        con.printf("Start Timer1 %X, %X\n", data, m_timer1_val);
+                                        logerror("Start Timer1 %X, %X\n", data, m_timer1_val);
                                         // Get the frame frequency from video
                                         int frame_freq = (m_iopage0->read(0xD001 - 0xC000) & 1) == 1? 70: 60;
                                         m_timer1->adjust(attotime::from_hz(XTAL(frame_freq)), 0, attotime::from_hz(XTAL(frame_freq)));
                                     }
                                     else
                                     {
-                                        con.printf("Stop Timer1\n");
+                                        logerror("Stop Timer1\n");
                                         m_timer1->adjust(attotime::never);
                                     }
 
                                     if ((data & 0x2) != 0)
                                     {
-                                        con.printf("Timer1 value = 0\n");
+                                        logerror("Timer1 value = 0\n");
                                         m_timer1_val = 0;
                                     }
                                     if ((data & 0x4) != 0)
                                     {
                                         m_timer1_val = m_timer1_load;
-                                        con.printf("Timer1 value = %06X\n", m_timer1_val);
+                                        logerror("Timer1 value = %06X\n", m_timer1_val);
                                     }
                                     break;
                                 case 0xD659:
@@ -832,7 +829,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xD660 && adj_addr < 0xD670)
                         {
                             // Interrupt Registers
-                            //con.printf("Interrupt Register: %04X with %02X\n", adj_addr, data);
+                            //logerror("Interrupt Register: %04X with %02X\n", adj_addr, data);
                             switch (adj_addr)
                             {
                                 case 0xD660:
@@ -905,14 +902,14 @@ void f256_state::mem_w(offs_t offset, u8 data)
                             }
                             if (m_interrupt_reg[0] == 0 && m_interrupt_reg[1] == 0 && m_interrupt_reg[2] == 0)
                             {
-                                //con.printf("Clearing Interrupt Line\n");
+                                //logerror("Clearing Interrupt Line\n");
                                 m_maincpu->set_input_line(M6502_IRQ_LINE, CLEAR_LINE);
                             }
                         }
                         //IEC  - 0xD680 is not writable
                         else if (adj_addr >= 0xD680 && adj_addr < 0xD682)
                         {
-                            con.printf("Writing to IEC reg %X %02X\n", adj_addr, data);
+                            logerror("Writing to IEC reg %X %02X\n", adj_addr, data);
                             if (adj_addr == 0xD681)
                             {
                                 m_iec_out = data;
@@ -1151,6 +1148,7 @@ void f256_state::codec_done(s32 param)
 }
 void f256_state::reset_mmu()
 {
+    logerror("reset_mmu\n");
     for (int i =0; i < 32; i++)
     {
         if (i % 8 == 7)
@@ -1198,8 +1196,7 @@ inline void f256_state::update_iec()
 void f256_state::iec_srq_w(int state)
 {
     // Debugger
-    debugger_console &con = machine().debugger().console();
-    con.printf("Event iec_srq_w: %X\n", state);
+    logerror("Event iec_srq_w: %X\n", state);
 
     m_iec_srq = state;
 
@@ -1214,8 +1211,7 @@ void f256_state::iec_srq_w(int state)
 void f256_state::iec_data_w(int state)
 {
     // Debugger
-    debugger_console &con = machine().debugger().console();
-    con.printf("Event iec_data_w: %X\n", state);
+    logerror("Event iec_data_w: %X\n", state);
 
     if (state && ((m_interrupt_masks[2] & 0x1) == 0))
     {
@@ -1227,8 +1223,7 @@ void f256_state::iec_data_w(int state)
 void f256_state::iec_atn_w(int state)
 {
     // Debugger
-    debugger_console &con = machine().debugger().console();
-    con.printf("Event iec_atn_w: %X\n", state);
+    logerror("Event iec_atn_w: %X\n", state);
     if (state && ((m_interrupt_masks[2] & 0x4) == 0))
     {
         m_interrupt_reg[2] |= 0x4;
@@ -1238,8 +1233,7 @@ void f256_state::iec_atn_w(int state)
 void f256_state::iec_clk_w(int state)
 {
     // Debugger
-    debugger_console &con = machine().debugger().console();
-    con.printf("Event iec_clk_w: %X\n", state);
+    logerror("Event iec_clk_w: %X\n", state);
     if (state && ((m_interrupt_masks[2] & 0x2) == 0))
     {
         m_interrupt_reg[2] |= 0x2;
@@ -1434,9 +1428,7 @@ void f256_state::sof_interrtupt(int state)
 {
     if (state) // && ((m_interrupt_masks[1] & 0x01) == 0))
     {
-        // Debugger
-        // debugger_console &con = machine().debugger().console();
-        // con.printf("SOF INTERRUPT: %02X\n", state);
+        // logerror("SOF INTERRUPT: %02X\n", state);
         m_interrupt_reg[0] |= 0x01;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1445,9 +1437,7 @@ void f256_state::sol_interrtupt(int state)
 {
     if (state && ((m_interrupt_masks[1] & 0x02) == 0))
     {
-        // Debugger
-        debugger_console &con = machine().debugger().console();
-        con.printf("SOL INTERRUPT: %02X\n", state);
+        logerror("SOL INTERRUPT: %02X\n", state);
         m_interrupt_reg[0] |= 0x02;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1457,9 +1447,6 @@ void f256_state::rtc_interrupt_handler(int state)
     // this is really odd: if I set state==1, then the interrupt gets only called once.
     if (state == 0 && ((m_interrupt_masks[1] & 0x10) == 0))
     {
-        // Debugger
-        //debugger_console &con = machine().debugger().console();
-        //con.printf("RTC INTERRUPT: %X:%X:%X\n", m_rtc->read(4), m_rtc->read(2), m_rtc->read(0));
         m_interrupt_reg[1] |= 0x10;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1470,9 +1457,7 @@ void f256_state::via0_interrupt(int state)
     // if a joystick button is pressed, set the VIA0 interrupt if the mask allows if
     if (state && ((m_interrupt_masks[1] & 0x20) == 0))
     {
-        // Debugger
-        debugger_console &con = machine().debugger().console();
-        con.printf("VIA0 INTERRUPT: %02X\n", state);
+        logerror("VIA0 INTERRUPT: %02X\n", state);
         m_interrupt_reg[1] |= 0x20;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1482,9 +1467,7 @@ void f256_state::via1_interrupt(int state)
     // if a keyboard button is pressed, set the VIA1 interrupt if the mask allows if
     if (state && ((m_interrupt_masks[1] & 0x40) == 0))
     {
-        // Debugger
-        debugger_console &con = machine().debugger().console();
-        con.printf("VIA1 INTERRUPT: %02X\n", state);
+        logerror("VIA1 INTERRUPT: %02X\n", state);
         m_interrupt_reg[1] |= 0x40;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1493,33 +1476,25 @@ void f256_state::dma_interrupt_handler(int state)
 {
     // if (state && ((m_interrupt_masks[1] & 0x10) == 0))
     // {
-    //     // Debugger
-    //     debugger_console &con = machine().debugger().console();
-    //     con.printf("DMA Interrupt Not implemented!");
     //     m_interrupt_reg[1] |= 0x10;
     //     m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     // }
 }
 void f256_state::timer0_interrupt_handler(int state)
 {
-    // if a keyboard button is pressed, set the VIA1 interrupt if the mask allows if
     if (state && ((m_interrupt_masks[0] & 0x10) == 0))
     {
-        // Debugger
-        debugger_console &con = machine().debugger().console();
-        con.printf("TIMER0 INTERRUPT: %02X\n", state);
+        logerror("TIMER0 INTERRUPT: %02X\n", state);
         m_interrupt_reg[0] |= 0x10;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
 }
 void f256_state::timer1_interrupt_handler(int state)
 {
-    // if a keyboard button is pressed, set the VIA1 interrupt if the mask allows if
+    logerror("Timer1 interrupt handler %d\n", state);
     if (state && ((m_interrupt_masks[0] & 0x20) == 0))
     {
-        // Debugger
-        debugger_console &con = machine().debugger().console();
-        con.printf("TIMER1 INTERRUPT: %02X\n", state);
+        logerror("TIMER1 INTERRUPT: %02X\n", state);
         m_interrupt_reg[0] |= 0x20;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1554,8 +1529,7 @@ TIMER_CALLBACK_MEMBER(f256_state::spi_clock)
 // This is the optimized function for Timer0
 TIMER_CALLBACK_MEMBER(f256_state::timer0)
 {
-    debugger_console &con = machine().debugger().console();
-    con.printf("Timer0 reached value: %06X\n", m_timer0_load);
+    logerror("Timer0 reached value: %06X\n", m_timer0_load);
     uint8_t reg_t0 = m_iopage0->read(0xD650 - 0xC000);
     if ((reg_t0 & 0x80) !=0)
     {
@@ -1564,8 +1538,6 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
 }
 // TIMER_CALLBACK_MEMBER(f256_state::timer0)
 // {
-//     // Debugger
-//     debugger_console &con = machine().debugger().console();
 //     uint8_t reg_t0 = m_iopage0->read(0xD650 - 0xC000);
 //     uint32_t cmp = m_iopage0->read(0xD655 - 0xC000) + (m_iopage0->read(0xD656 - 0xC000) << 8) +
 //             (m_iopage0->read(0xD657 - 0xC000) << 16);
@@ -1576,13 +1548,13 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
 //         int8_t action = m_iopage0->read(0xD654 - 0xC000);
 //         if (action & 1)
 //         {
-//             con.printf("TIMER0 Cleared\n");
+//             logerror("TIMER0 Cleared\n");
 //             m_timer0_val = 0;
 //         }
 //         else
 //         {
 //             m_timer0_val = m_timer0_load;
-//             con.printf("TIMER0 Reloaded with: %X\n", m_timer0_val);
+//             logerror("TIMER0 Reloaded with: %X\n", m_timer0_val);
 //         }
 //         m_timer0_eq = 0;
 //     }
@@ -1602,7 +1574,7 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
 //             if (m_timer0_val == cmp)
 //             {
 //                 m_timer0_eq = 1;
-//                 con.printf("TIMER0 up value reached %X\n", cmp);
+//                 logerror("TIMER0 up value reached %X\n", cmp);
 //             }
 
 //         }
@@ -1618,7 +1590,7 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
 //             if (m_timer0_val == cmp)
 //             {
 //                 m_timer0_eq = 1;
-//                 con.printf("TIMER0 down value reached %X\n", cmp);
+//                 logerror("TIMER0 down value reached %X\n", cmp);
 //             }
 //         }
 //         if (m_timer0_eq == 1 && (reg_t0 & 0x80) !=0)
@@ -1632,25 +1604,24 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
 
 TIMER_CALLBACK_MEMBER(f256_state::timer1)
 {
-    // Debugger
-    debugger_console &con = machine().debugger().console();
+    
     uint8_t reg_t1 = m_iopage0->read(0xD658 - 0xC000);
     uint32_t cmp = m_iopage0->read(0xD65D - 0xC000) + (m_iopage0->read(0xD65E - 0xC000) << 8) +
             (m_iopage0->read(0xD65F - 0xC000) << 16);
-
+    logerror("TIMER1 event %06X CMP: %06X\n", m_timer1_val, cmp);
     // if timer as reached value, then execute the action
     if (m_timer1_eq == 1)
     {
         int8_t action = m_iopage0->read(0xD65C - 0xC000);
         if (action & 1)
         {
-            con.printf("TIMER1 Cleared\n");
+            logerror("TIMER1 Cleared\n");
             m_timer1_val = 0;
         }
         else
         {
             m_timer1_val = m_timer1_load;
-            con.printf("TIMER1 Reloaded with %X\n", m_timer1_val);
+            logerror("TIMER1 Reloaded with %X\n", m_timer1_val);
         }
         m_timer1_eq = 0;
     }
@@ -1670,7 +1641,7 @@ TIMER_CALLBACK_MEMBER(f256_state::timer1)
             if (m_timer1_val == cmp)
             {
                 m_timer1_eq = 1;
-                con.printf("TIMER1 up value reached %X\n", cmp);
+                logerror("TIMER1 up value reached %X\n", cmp);
             }
 
         }
@@ -1686,7 +1657,7 @@ TIMER_CALLBACK_MEMBER(f256_state::timer1)
             if (m_timer1_val == cmp)
             {
                 m_timer1_eq = 1;
-                con.printf("TIMER1 up value reached %X\n", cmp);
+                logerror("TIMER1 up value reached %X\n", cmp);
             }
         }
         if (m_timer1_eq == 1 && (reg_t1 & 0x80) !=0)
