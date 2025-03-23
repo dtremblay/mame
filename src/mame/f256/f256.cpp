@@ -28,17 +28,12 @@ f256_state::f256_state(const machine_config &mconfig, device_type type, const ch
     , m_iopage3(*this, IOPAGE3_TAG)
     , m_rom(*this, ROM_TAG)
     , m_font(*this, FONT_TAG)
-    // m_pia_0(*this, "pia0"),
-    // m_pia_1(*this, "pia1"),
-    // m_dac(*this, "dac"),
-    // m_sbs(*this, "sbs"),
     , m_screen(*this, SCREEN_TAG)
     , m_rtc(*this, "rtc")
     , m_keyboard(*this, "ROW%u", 0)  // this, with the 8 array, requires 8 ROW of INPUTs
     , m_via6522_0(*this, "via6522_0")
 	, m_via6522_1(*this, "via6522_1")
 
-    //, m_irqs(*this, "irqs")
     , m_sn0(*this, "sn76489_0")
     , m_sn1(*this, "sn76489_1")
     , m_opl3(*this, "ymf262")
@@ -47,6 +42,8 @@ f256_state::f256_state(const machine_config &mconfig, device_type type, const ch
 
     , m_video(*this, "tiny_vicky")
     //, m_iec(*this, "iec_bus")
+    //, m_iec_data_out(1)
+    //, m_iec_srq(1)
     , m_ps2_keyboard(*this, "ps2_kbd")
     , m_mouse(*this, "ps_mouse")
     , m_uart(*this, "uart")
@@ -54,8 +51,6 @@ f256_state::f256_state(const machine_config &mconfig, device_type type, const ch
 	, m_spi_clock_state(false)
 	, m_spi_clock_sysclk(false)
 	, m_spi_clock_cycles(0)
-    //, m_iec_data_out(1)
-    //, m_iec_srq(1)
 {
 }
 
@@ -155,7 +150,7 @@ f256_state::~f256_state()
     Memory map
     $00:0000 - $07:FFFF	RAM
     $08:0000 - $0F:FFFF	Flash
-    $10:0000 - $13:FFFF	Expansion Memory
+    $10:0000 - $13:FFFF	Expansion Memory - NOT IMPLEMENTED
     $14:0000 - $1F:FFFF	Reserved
 */
 void f256_state::program_map(address_map &map)
@@ -259,6 +254,7 @@ u8   f256_state::mem_r(offs_t offset)
                         // return Vicky's scan line and colum
                         uint16_t line = m_video->line();
                         uint16_t column = m_video->column();
+                        logerror("Scanline Addr: %04X, Line: %04X, Column: %04X\n", adj_addr, line, column);
                         switch (adj_addr - 0xD018)
                         {
                             case 0:
@@ -289,6 +285,7 @@ u8   f256_state::mem_r(offs_t offset)
                     }
                     else if (adj_addr >= 0xD620 && adj_addr < 0xD630)
                     {
+                        // logerror("CODEC Read Addr: %04X\n", adj_addr);
                         uint16_t base = adj_addr - 0xD620;
                         return m_codec[base];
                     }
@@ -302,6 +299,7 @@ u8   f256_state::mem_r(offs_t offset)
                     else if (adj_addr >= 0xD640 && adj_addr < 0xD64F)
                     {
                         // PS2
+                        logerror("PS/2 Read %04X\n", adj_addr);
                         switch(adj_addr - 0xD640)
                         {
                             case 0:
@@ -435,6 +433,7 @@ u8   f256_state::mem_r(offs_t offset)
                     else if (adj_addr >= 0xD690 && adj_addr < 0xD6A0)
                     {
                         // RTC
+                        logerror("RTC Read %04X\n", adj_addr);
                         return m_rtc->read(adj_addr - 0xDC90);
                     }
                     else if (adj_addr >= 0xD6A0 && adj_addr < 0xD6C0)
@@ -446,6 +445,7 @@ u8   f256_state::mem_r(offs_t offset)
                         // D6A3 - Set to 0xAD to enable software reset
                         // D6A4 - D6A6 : Random Number generator
                         // D6A7 - Macine ID - For the F256, the machine ID will be 0x02. For the F256k, the machine ID will be 0x12.
+                        logerror("System Register Read %04X\n", adj_addr);
                         switch (adj_addr){
                             case 0xD6A0:
                                 return m_sdcard->get_card_present() ? 0x10:0;
@@ -511,6 +511,7 @@ u8   f256_state::mem_r(offs_t offset)
                     {
                         // SD Card
                         //m_sdcard->(adj_addr - 0xDD00);
+                        // logerror("Reading SD Card: %04X\n", adj_addr);
                         switch (adj_addr)
                         {
                             case 0xDD00:
@@ -572,23 +573,16 @@ u8   f256_state::mem_r(offs_t offset)
                         }
                     }
                     // Stick everything else in Vicky
-                        // (adj_addr >= 0xC000 && adj_addr < 0xD400) ||  // gamma, mouse graphics, vicky registers, bitmaps, tiles
-                        // (adj_addr >= 0xD800 && adj_addr < 0xD880) ||  // text colors
-                        // (adj_addr >= 0xD900 && adj_addr < 0xDB00)     // sprite registers
-                    else
-                    {
-                        return m_iopage0->read(adj_addr - 0xC000);
-                    }
-                    break;
+                    // (adj_addr >= 0xC000 && adj_addr < 0xD400) ||  // gamma, mouse graphics, vicky registers, bitmaps, tiles
+                    // (adj_addr >= 0xD800 && adj_addr < 0xD880) ||  // text colors
+                    // (adj_addr >= 0xD900 && adj_addr < 0xDB00)     // sprite registers
+                    return m_iopage0->read(adj_addr - 0xC000);
                 case 1:
                     return m_iopage1->read(adj_addr - 0xC000);
-                    break;
                 case 2:
                     return m_iopage2->read(adj_addr - 0xC000);
-                    break;
                 case 3:
                     return m_iopage3->read(adj_addr - 0xC000);
-                    break;
             }
         }
         offs_t address = (fslot << 13) + low_addr;
@@ -626,6 +620,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         // here we have a number of devices to write
                         if (adj_addr == 0xD001)
                         {
+                            logerror("Change Resolution %04X %02X\n", adj_addr, data);
                             if ((data & 0x1) != 0 )
                             {
                                 m_screen->set_refresh_hz(70);
@@ -689,6 +684,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xD620 && adj_addr < 0xD630)
                         {
                             // Codec
+                            logerror("CODEC Write %04X %02X\n", adj_addr, data);
                             uint16_t base = adj_addr-0xD620;
                             m_codec[base] = data;
                             // the program is telling the codec to start
@@ -707,6 +703,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xD640 && adj_addr < 0xD64F)
                         {
                             // PS/2 Keyboard
+                            logerror("PS/2 Write %04X %02X\n", adj_addr, data);
                             uint16_t delta = adj_addr-0xD640;
                             m_ps2[delta] = data;
                             // Only addresses 0 and 1 are writable
@@ -829,7 +826,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xD660 && adj_addr < 0xD670)
                         {
                             // Interrupt Registers
-                            //logerror("Interrupt Register: %04X with %02X\n", adj_addr, data);
+                            logerror("Interrupt Register: %04X with %02X\n", adj_addr, data);
                             switch (adj_addr)
                             {
                                 case 0xD660:
@@ -930,11 +927,13 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xD690 && adj_addr < 0xD6A0)
                         {
                             // RTC
+                            logerror("RTC Write %04X %02X\n", adj_addr, data);
                             m_rtc->write(adj_addr - 0xDC90, data);
                         }
                         else if (adj_addr >= 0xD6A0 && adj_addr < 0xD6A7)
                         {
                             // RNG
+                            logerror("RNG Write %04X %02X\n", adj_addr, data);
                             switch (adj_addr)
                             {
                                 case 0xD6A1:
@@ -1074,6 +1073,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xDF00 && adj_addr < 0xE000)
                         {
                             // DMA
+                            logerror("DMA Write %04X %02X\n", adj_addr, data);
                             m_iopage0->write(adj_addr - 0xC000, data);
                             if ((adj_addr - 0xDF00) == 0)
                             {
