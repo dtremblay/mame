@@ -210,6 +210,7 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
                         draw_text(row, mcr, enable_gamma, border_x, border_y, y, (uint16_t)640, (uint16_t)lines);
                     }
                 }
+                draw_mouse(row, enable_gamma, y, (uint16_t)640, (uint16_t)lines);
             }
         }
     }
@@ -576,14 +577,14 @@ void tiny_vicky_video_device::draw_tiles(uint32_t *row, bool enable_gamma, uint8
 
 void tiny_vicky_video_device::draw_mouse(uint32_t *row, bool enable_gamma, uint16_t line, uint16_t width, uint16_t height)
 {
-    uint8_t mouse_reg = iopage0_ptr[0xD6E0 -0xC000];
+    uint8_t mouse_reg = iopage0_ptr[0xD6E0 - 0xC000];
 
     bool MousePointerEnabled = (mouse_reg & 3) != 0;
 
     if (MousePointerEnabled)
     {
-        int PosX = iopage0_ptr[0xD6E0 -0xC000 + 2] + (iopage0_ptr[0xD6E0 -0xC000 + 3] << 8);
-        int PosY = iopage0_ptr[0xD6E0 -0xC000 + 4] + (iopage0_ptr[0xD6E0 -0xC000 + 5] << 8);
+        int PosX = iopage0_ptr[0xD6E0 - 0xC000 + 2] + (iopage0_ptr[0xD6E0 - 0xC000 + 3] << 8);
+        int PosY = iopage0_ptr[0xD6E0 - 0xC000 + 4] + (iopage0_ptr[0xD6E0 - 0xC000 + 5] << 8);
         if (line >= PosY && line < PosY + 16)
         {
             int ptr_addr = 0xCC00 - 0xC000;
@@ -600,7 +601,7 @@ void tiny_vicky_video_device::draw_mouse(uint32_t *row, bool enable_gamma, uint1
 
                 if (pixel_index != 0)
                 {
-                    if (enable_gamma)
+                    if (!enable_gamma)
                     {
                         value = rgb_t(pixel_index, pixel_index, pixel_index);
                     }

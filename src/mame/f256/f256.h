@@ -141,6 +141,11 @@ private:
 	uint8_t kbFifo[6] = {};
 	uint8_t msFifo[3] = {};
 
+	// mouse
+	// uint16_t m_mouse_x = 0, m_mouse_y = 0;
+	// bool m_mouse_enabled = false;
+	// uint8_t m_mouse_mode = 0;
+
 	// SDCard
 	void write_sd_control(u8 ctrl);
 	void write_sd_data(u8 data);

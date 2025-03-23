@@ -231,7 +231,7 @@ void f256_state::lut_w(offs_t offset, u8 data)
 // offsets are 0x10 based
 u8   f256_state::mem_r(offs_t offset)
 {
-    
+
     // find which slot to read
     uint8_t mmu = m_mmu_reg & 3;
     uint16_t adj_addr = offset + 0x10;
@@ -423,7 +423,7 @@ u8   f256_state::mem_r(offs_t offset)
                                 //     (m_iec->atn_r() << 4) +
                                 //     (m_iec->clk_r() << 1) +
                                 //     (m_iec->data_r());
-                                // logerror(", data: %02X\n", m_iec_in);
+                                logerror(", data: %02X\n", m_iec_in);
                                 return m_iec_in;
                             case 1:
                                 logerror(", data: %02X\n", m_iec_out);
@@ -492,6 +492,27 @@ u8   f256_state::mem_r(offs_t offset)
                         }
 
                     }
+                    // mouse registers
+                    // else if (adj_addr >= 0xD6E0 && adj_addr < 0xD6E9)
+                    // {
+                    //     switch (adj_addr)
+                    //     {
+                    //         case 0xD6E0:
+                    //             return (m_mouse_mode << 1) + m_mouse_enabled ? 1 : 0;
+                    //             break;
+                    //         case 0xD6E2:
+                    //             return m_mouse_x & 0xFF;
+                    //         case 0xD6E3:
+                    //             return (m_mouse_x >> 8) & 0xFF;
+                    //         case 0xD6E4:
+                    //             return m_mouse_y & 0xFF;
+                    //         case 0xD6E5:
+                    //             return (m_mouse_y >> 8) & 0xFF;
+
+                    //         default:
+                    //             break;
+                    //     }
+                    // }
                     else if (adj_addr >= 0xD880 && adj_addr < 0xD8C0)
                     {
                         // NES
@@ -603,7 +624,6 @@ void f256_state::mem_w(offs_t offset, u8 data)
     uint8_t slot = adj_addr >> 13;
     uint16_t low_addr = adj_addr & 0x1FFF;
     uint8_t old, combo;
-    
     uint8_t fslot = mmu_lut[mmu * 8 + slot];
     if (fslot < 0x40)
     {
@@ -717,14 +737,14 @@ void f256_state::mem_w(offs_t offset, u8 data)
                                             // write out the byte in data[1] to keyboard
                                             isK_WR = false;
                                             K_AK = true;
-                                            //m_ps2_keyboard->data_write_from_kb(data);
+                                            m_ps2_keyboard->data_write_from_kb(data);
                                         }
                                         if (isM_WR)
                                         {
                                             // write out the byte in data[1] to mouse
                                             isM_WR = false;
                                             M_AK = true;
-                                            //m_mouse->data_write(data);
+                                            m_mouse->data_write(data);
                                         }
                                         break;
                                     case 2:
@@ -899,7 +919,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                             }
                             if (m_interrupt_reg[0] == 0 && m_interrupt_reg[1] == 0 && m_interrupt_reg[2] == 0)
                             {
-                                //logerror("Clearing Interrupt Line\n");
+                                logerror("Clearing Interrupt Line\n");
                                 m_maincpu->set_input_line(M6502_IRQ_LINE, CLEAR_LINE);
                             }
                         }
@@ -992,6 +1012,40 @@ void f256_state::mem_w(offs_t offset, u8 data)
                                     break;
                             }
                         }
+                        // mouse registers
+                        // else if (adj_addr >= 0xD6E0 && adj_addr < 0xD6E9)
+                        // {
+                        //     switch (adj_addr)
+                        //     {
+                        //         case 0xD6E0:
+                        //             m_mouse_enabled = (data & 1) != 0;
+                        //             m_mouse_mode = (data >> 1) & 1;
+                        //             break;
+                        //         case 0xD6E2:
+                        //             // keep the high byte
+                        //             m_mouse_x &= 0xFF00;
+                        //             m_mouse_x |= data;
+                        //             break;
+                        //         case 0xD6E3:
+                        //             // keep the low byte
+                        //             m_mouse_x &= 0xFF;
+                        //             m_mouse_x |= data << 8;
+                        //             break;
+                        //         case 0xD6E4:
+                        //             // keep the high byte
+                        //             m_mouse_y &= 0xFF00;
+                        //             m_mouse_y |= data;
+                        //             break;
+                        //         case 0xD6E5:
+                        //             // keep the low byte
+                        //             m_mouse_y &= 0xFF;
+                        //             m_mouse_y |= data << 8;
+                        //             break;
+
+                        //         default:
+                        //             break;
+                        //     }
+                        // }
                         else if (adj_addr >= 0xD880 && adj_addr < 0xD8C0)
                         {
                             // NES - only address 0xD8800 is writable
@@ -1195,7 +1249,6 @@ inline void f256_state::update_iec()
 
 void f256_state::iec_srq_w(int state)
 {
-    // Debugger
     logerror("Event iec_srq_w: %X\n", state);
 
     m_iec_srq = state;
@@ -1210,7 +1263,6 @@ void f256_state::iec_srq_w(int state)
 }
 void f256_state::iec_data_w(int state)
 {
-    // Debugger
     logerror("Event iec_data_w: %X\n", state);
 
     if (state && ((m_interrupt_masks[2] & 0x1) == 0))
@@ -1222,7 +1274,6 @@ void f256_state::iec_data_w(int state)
 }
 void f256_state::iec_atn_w(int state)
 {
-    // Debugger
     logerror("Event iec_atn_w: %X\n", state);
     if (state && ((m_interrupt_masks[2] & 0x4) == 0))
     {
@@ -1232,7 +1283,6 @@ void f256_state::iec_atn_w(int state)
 }
 void f256_state::iec_clk_w(int state)
 {
-    // Debugger
     logerror("Event iec_clk_w: %X\n", state);
     if (state && ((m_interrupt_masks[2] & 0x2) == 0))
     {
@@ -1248,7 +1298,6 @@ void f256_state::unsignedMultiplier(int baseAddr)
     uint16_t acc1 = (m_iopage0->read(baseAddr + 1) << 8) + m_iopage0->read(baseAddr);
     uint16_t acc2 = (m_iopage0->read(baseAddr + 3) << 8) + m_iopage0->read(baseAddr + 2);
     m_multiplication_result = acc1 * acc2;
-    //logerror("Multiply: %04X %04X: %08X\n", acc1, acc2, result);
 }
 
 void f256_state::unsignedDivider(int baseAddr)
@@ -1260,7 +1309,6 @@ void f256_state::unsignedDivider(int baseAddr)
         m_division_result= acc2 / acc1;
         m_division_remainder = acc2 % acc1;
     }
-    //logerror("Divide: %04X %04X: %04X %04X\n", acc1, acc2, result, remainder);
 }
 
 void f256_state::unsignedAdder(int baseAddr)
@@ -1270,7 +1318,6 @@ void f256_state::unsignedAdder(int baseAddr)
     int acc2 = (m_iopage0->read(baseAddr + 7) << 24) + (m_iopage0->read(baseAddr + 6) << 16) +
         (m_iopage0->read(baseAddr + 5) << 8) + m_iopage0->read(baseAddr + 4);
     m_addition_result = acc1 + acc2;
-    //logerror("Add: %08X %08X: %16X\n", acc1, acc2, result);
 }
 
 //-------------------------------------------------
@@ -1428,7 +1475,7 @@ void f256_state::sof_interrtupt(int state)
 {
     if (state) // && ((m_interrupt_masks[1] & 0x01) == 0))
     {
-        // logerror("SOF INTERRUPT: %02X\n", state);
+        //logerror("SOF INTERRUPT: %02X\n", state);
         m_interrupt_reg[0] |= 0x01;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1447,6 +1494,7 @@ void f256_state::rtc_interrupt_handler(int state)
     // this is really odd: if I set state==1, then the interrupt gets only called once.
     if (state == 0 && ((m_interrupt_masks[1] & 0x10) == 0))
     {
+        logerror("RTC INTERRUPT: %02X:%02X:%02X\n", m_rtc->read(4), m_rtc->read(2), m_rtc->read(0));
         m_interrupt_reg[1] |= 0x10;
         m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     }
@@ -1476,6 +1524,7 @@ void f256_state::dma_interrupt_handler(int state)
 {
     // if (state && ((m_interrupt_masks[1] & 0x10) == 0))
     // {
+    //     logerror("DMA Interrupt Not implemented!");
     //     m_interrupt_reg[1] |= 0x10;
     //     m_maincpu->set_input_line(M6502_IRQ_LINE, state);
     // }
@@ -1601,10 +1650,9 @@ TIMER_CALLBACK_MEMBER(f256_state::timer0)
 // }
 
 
-
+// This timer is much slower than Timer0, so we can use single increments
 TIMER_CALLBACK_MEMBER(f256_state::timer1)
 {
-    
     uint8_t reg_t1 = m_iopage0->read(0xD658 - 0xC000);
     uint32_t cmp = m_iopage0->read(0xD65D - 0xC000) + (m_iopage0->read(0xD65E - 0xC000) << 8) +
             (m_iopage0->read(0xD65F - 0xC000) << 16);
