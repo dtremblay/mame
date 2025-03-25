@@ -231,16 +231,16 @@ void f256_state::lut_w(offs_t offset, u8 data)
 // offsets are 0x10 based
 u8   f256_state::mem_r(offs_t offset)
 {
-
+    
     // find which slot to read
     uint8_t mmu = m_mmu_reg & 3;
     uint16_t adj_addr = offset + 0x10;
     uint8_t slot = adj_addr >> 13;
     uint16_t low_addr = adj_addr & 0x1FFF;
-    uint8_t fslot = mmu_lut[mmu * 8 + slot];
-
+    uint8_t bank = mmu_lut[mmu * 8 + slot];
+    
     // fslot < 0x40 is RAM, greater is FLASH/ROM
-    if (fslot < 0x40)
+    if (bank < 0x40)
     {
         // Slot 6 is where I/O devices are located, when IO_DISABLE is 0
         if (slot == 6 && (m_ioreg & 0x4) == 0)
@@ -372,6 +372,7 @@ u8   f256_state::mem_r(offs_t offset)
                     else if (adj_addr >= 0xD660 && adj_addr < 0xD670)
                     {
                         // Interrupt Registers
+                        logerror("Interrupt Registers Read: %04X\n", adj_addr);
                         switch (adj_addr)
                         {
                             case 0xD660:
@@ -383,11 +384,11 @@ u8   f256_state::mem_r(offs_t offset)
                             case 0xD663:
                                 return 0;
                             case 0xD664:
-                                return 0; // int_polarity_0
+                                return m_interrupt_polarity[0]; // int_polarity_0
                             case 0xD665:
-                                return 0; // int_polarity_1
+                                return m_interrupt_polarity[1]; // int_polarity_1
                             case 0xD666:
-                                return 0; // int_polarity_2
+                                return m_interrupt_polarity[2]; // int_polarity_2
                             case 0xD667:
                                 return 0;
                             case 0xD668:
@@ -606,15 +607,20 @@ u8   f256_state::mem_r(offs_t offset)
                     return m_iopage3->read(adj_addr - 0xC000);
             }
         }
-        offs_t address = (fslot << 13) + low_addr;
+        offs_t address = (bank << 13) + low_addr;
         return m_ram->read(address);
     }
-    else
+    else if (bank < 0x80)
     {
-        offs_t address = (fslot << 13) + low_addr;
-        return m_rom->as_u8(address );
+        offs_t address = (bank << 13) + low_addr;
+        return m_rom->as_u8(address);
     }
-
+    else if (bank < 0xA0)
+    {
+        // this is now trying to read expansion RAM/Flash - NOT IMPLEMENTED
+    }
+    // Invalid area of memory
+    return 0;
 }
 void f256_state::mem_w(offs_t offset, u8 data)
 {
@@ -624,10 +630,10 @@ void f256_state::mem_w(offs_t offset, u8 data)
     uint8_t slot = adj_addr >> 13;
     uint16_t low_addr = adj_addr & 0x1FFF;
     uint8_t old, combo;
-    uint8_t fslot = mmu_lut[mmu * 8 + slot];
-    if (fslot < 0x40)
+    
+    uint8_t bank = mmu_lut[mmu * 8 + slot];
+    if (bank < 0x40)
     {
-
         // Slot 6 is where I/O devices are located, when IO_DISABLE is 0
         if (slot == 6)
         {
@@ -846,7 +852,7 @@ void f256_state::mem_w(offs_t offset, u8 data)
                         else if (adj_addr >= 0xD660 && adj_addr < 0xD670)
                         {
                             // Interrupt Registers
-                            logerror("Interrupt Register: %04X with %02X\n", adj_addr, data);
+                            logerror("Interrupt Register Write: %04X with %02X\n", adj_addr, data);
                             switch (adj_addr)
                             {
                                 case 0xD660:
@@ -881,12 +887,15 @@ void f256_state::mem_w(offs_t offset, u8 data)
                                     break;
                                 case 0xD664:
                                     // int_polarity_0
+                                    m_interrupt_polarity[0] = data;
                                     break;
                                 case 0xD665:
                                     // int_polarity_1
+                                    m_interrupt_polarity[1] = data;
                                     break;
                                 case 0xD666:
                                     // int_polarity_2
+                                    m_interrupt_polarity[2] = data;
                                     break;
                                 case 0xD667:
                                     break;
@@ -1185,13 +1194,13 @@ void f256_state::mem_w(offs_t offset, u8 data)
             }
             else
             {
-                offs_t address = (fslot << 13) + low_addr;
+                offs_t address = (bank << 13) + low_addr;
                 m_ram->write(address, data);
             }
         }
         else
         {
-            offs_t address = (fslot << 13) + low_addr;
+            offs_t address = (bank << 13) + low_addr;
             m_ram->write(address, data);
         }
     }

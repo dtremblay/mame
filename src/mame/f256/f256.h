@@ -102,6 +102,7 @@ private:
 	uint8_t m_interrupt_reg[3] = { 0, 0 ,0};
 	uint8_t m_interrupt_masks[3] = { 0xFF, 0xFF, 0xFF};
 	uint8_t m_interrupt_edge[3] = { 0xFF, 0xFF, 0xFF};
+	uint8_t m_interrupt_polarity[3] = {0, 0, 0};
 
 	// VIA0 - Atari joystick functions
 	u8 via0_system_porta_r();
