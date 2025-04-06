@@ -4,6 +4,8 @@
 #define CHAR_HEIGHT     8
 #define CHAR_WIDTH      8
 
+//#include <atomic>
+
 class tiny_vicky_video_device : public device_t
 {
 public:
@@ -42,8 +44,6 @@ public:
     {
         return m_sol_irq_handler.bind();
     };
-    uint16_t line();
-    uint16_t column();
 protected:
     // device-level overrides
 	virtual void device_start() override ATTR_COLD;
@@ -66,8 +66,6 @@ private:
     uint8_t cursor_flash_rate = 60;
 
     // raster
-    uint16_t m_line, m_column = 0;
-
     rgb_t get_text_lut(uint8_t color_index, bool fg, bool gamma);
     rgb_t get_lut_value(uint8_t lut_index, uint8_t pix_val, bool gamma);
     void draw_text(uint32_t *row, uint8_t mcr, bool enable_gamma, uint8_t brd_x, uint8_t brd_y, uint16_t line, uint16_t x_res, uint16_t y_res);

@@ -47,16 +47,6 @@ rgb_t tiny_vicky_video_device::get_lut_value(uint8_t lut_index, uint8_t pix_val,
     }
 }
 
-uint16_t tiny_vicky_video_device::line()
-{
-    return m_line;
-}
-// This is always 0 - too difficult to do this now
-uint16_t tiny_vicky_video_device::column()
-{
-    return m_column;
-}
-
 uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
     if (running && iopage0_ptr)
@@ -68,8 +58,8 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
         {
             cursor_counter = 0;
         }
-        // if MCR =0 or MCR bit 7 is set, then video is disabled
-        if (mcr != 0 && (mcr & 0x80) == 0)
+        // if MCR=0 or MCR bit 7 is set, then video is disabled
+        if (mcr != 0 && (mcr != 0x80))
         {
             // TODO: generate start of frame (SOF) interrupt
             m_sof_irq_handler(1);
@@ -87,9 +77,8 @@ uint32_t tiny_vicky_video_device::screen_update(screen_device &screen, bitmap_rg
                 border_y = iopage0_ptr[0x1009];
             }
             uint32_t *topleft = (uint32_t *)bitmap.raw_pixptr(0);
-            for (uint16_t y = 0; y < lines; y++)
+            for (int y = 0; y < lines; y++)
             {
-                m_line = y;
                 // Check the Sart of Line registers
                 uint8_t sol_reg = iopage0_ptr[0x1018];
                 // 12-bit line
@@ -592,11 +581,11 @@ void tiny_vicky_video_device::draw_mouse(uint32_t *row, bool enable_gamma, uint1
             // Mouse pointer is a 16x16 icon
             int colsToDraw = PosX < width - 16 ? 16 : width - PosX;
 
-            int mline = line - PosY;
+            int mouse_line = line - PosY;
             for (int col = 0; col < colsToDraw; col++)
             {
                 // Values are 0: transparent, 1:black, 255: white (gray scales)
-                uint8_t pixel_index = iopage0_ptr[ptr_addr + mline * 16 + col];
+                uint8_t pixel_index = iopage0_ptr[ptr_addr + mouse_line * 16 + col];
                 rgb_t value;
 
                 if (pixel_index != 0)
