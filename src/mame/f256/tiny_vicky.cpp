@@ -249,19 +249,21 @@ void tiny_vicky_video_device::draw_text(uint32_t *row, uint8_t mcr, bool enable_
     int screen_x = brd_x;
     // I'm assuming that if enable_cursor_flash is 0, then the cursor is always visible
     cursor_visible = enable_cursor && (enable_cursor_flash && (cursor_counter < cursor_flash_rate));
-    for (int col = 0; col < txt_cols; col++)
+    // the loop should go to txt_cols - going to 80 causes a weird alias, but the machine works this way... so.
+    for (int col = 0; col < 80; col++)
     {
         int x = col * CHAR_WIDTH;
         if (x + brd_x > x_res - 1 - brd_x)
         {
             continue;
         }
-        int offset = 0;
-        if (col < (double_x ? 40 : 80))
-        {
-            // offset is always based on 80 columns
-            offset = 80 * txt_line + col;
-        }
+        // int offset = 0;
+        // if (col < (double_x ? 40 : 80))
+        // {
+        //     // offset is always based on 80 columns
+        //     offset = 80 * txt_line + col;
+        // }
+        int offset = txt_cols * txt_line + col;
         // Each character will have foreground and background colors
         uint8_t character = iopage2_ptr[offset];
         uint8_t color = iopage3_ptr[offset];
